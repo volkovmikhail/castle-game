@@ -1,33 +1,20 @@
-import { TILE_SIZE } from './constants/sizes.js';
-import { BACKGROUND_COLOR } from './constants/colors.js';
-import { tiles } from './constants/tiles.js';
+import { CanvasRenderer } from './classes/canvas-renderer.js';
+import { GameLoop } from './classes/game-loop.js';
+import { Game } from './classes/game.js';
 
 const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
 
-function clear() {
-  ctx.fillStyle = BACKGROUND_COLOR;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+//Load tile map then start game init
+const tileMap = new Image();
+tileMap.src = 'assets/tilemap.png';
+tileMap.onload = main;
+
+function main() {
+  const renderer = new CanvasRenderer({ canvas, tileMap });
+
+  const game = new Game({ renderer });
+
+  const gameLoop = new GameLoop({ game });
+
+  gameLoop.start();
 }
-
-function render() {
-  clear();
-
-  const tileMap = new Image();
-  tileMap.src = 'assets/tilemap.png';
-  tileMap.onload = () => {
-    ctx.drawImage(
-      tileMap,
-      tiles.house.mapX,
-      tiles.house.mapY,
-      tiles.house.width,
-      tiles.house.height,
-      16, //pos x
-      32, //pos y
-      tiles.house.width,
-      tiles.house.height
-    );
-  };
-}
-
-render();
