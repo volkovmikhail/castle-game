@@ -1,19 +1,20 @@
-import { Sprite } from './sprite.js';
+import { Sprite } from '../engine/sprite.js';
 import { tiles } from '../constants/tiles.js';
 
 export class Game {
   /**
    * Creates an instance of Game.
    *
-   * @typedef {import('./canvas-renderer.js').CanvasRenderer} CanvasRenderer
+   * @typedef {import('../engine/canvas-renderer.js').CanvasRenderer} CanvasRenderer
+   * @typedef {import('../engine/controls.js').Controls} Controls
    *
    * @constructor
-   * @param {{ renderer: CanvasRenderer }} options
+   * @param {{ renderer: CanvasRenderer, controls: Controls }} options
    */
-  constructor({ renderer }) {
+  constructor({ renderer, controls }) {
     this.renderer = renderer;
 
-    //TEST DATA
+    //TODO: remove TEST DATA
     this.sprites = [];
     let offset = 16;
     let iteration = 1;

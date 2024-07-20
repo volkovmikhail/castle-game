@@ -1,7 +1,7 @@
 export class GameLoop {
   /**
    * Description placeholder
-   * @typedef {import('./game.js').Game} Game
+   * @typedef {import('../game/game.js').Game} Game
    * @param {{game: Game}} options
    */
   constructor({ game }) {

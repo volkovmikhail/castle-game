@@ -1,6 +1,7 @@
-import { CanvasRenderer } from './classes/canvas-renderer.js';
-import { GameLoop } from './classes/game-loop.js';
-import { Game } from './classes/game.js';
+import { CanvasRenderer } from './engine/canvas-renderer.js';
+import { Controls } from './engine/controls.js';
+import { GameLoop } from './engine/game-loop.js';
+import { Game } from './game/game.js';
 
 const canvas = document.getElementById('c');
 
@@ -11,8 +12,11 @@ tileMap.onload = main;
 
 function main() {
   const renderer = new CanvasRenderer({ canvas, tileMap });
+  const controls = new Controls({ canvas });
 
-  const game = new Game({ renderer });
+  controls.init();
+
+  const game = new Game({ renderer, controls });
 
   const gameLoop = new GameLoop({ game });
 
