@@ -1,3 +1,5 @@
+import { TILE_SIZE } from '../constants/sizes.js';
+
 export class Controls {
   /**
    * Creates an instance of Controls.
@@ -7,18 +9,18 @@ export class Controls {
    */
   constructor({ canvas }) {
     this.canvas = canvas;
-
-    //TODO: Delete this text default function
-    this.onMove = ({ x, y }) => {
-      console.log(`X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`);
-    };
   }
+
+  /**
+   * @type {{ x: number, y: number, tx: number, ty:number }}
+   */
+  #selectedCords;
 
   init() {
     this.canvas.addEventListener('mousemove', (event) => {
-      const { x, y } = this.calculateCords(event);
+      const cords = this.calculateCords(event);
 
-      this.onMove({ x, y });
+      this.#setSelectedCords(cords);
     });
   }
 
@@ -31,10 +33,18 @@ export class Controls {
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
 
-    return { x, y };
+    //calculate mouse tile
+    const tx = Math.floor(x / TILE_SIZE) * TILE_SIZE;
+    const ty = Math.floor(y / TILE_SIZE) * TILE_SIZE;
+
+    return { x, y, tx, ty };
   }
 
-  setOnMove(onMove) {
-    this.onMove = onMove;
+  #setSelectedCords(cords) {
+    this.#selectedCords = cords;
+  }
+
+  getSelectedCords() {
+    return this.#selectedCords ?? { tx: -TILE_SIZE, ty: -TILE_SIZE, x: -1, y: -1 };
   }
 }

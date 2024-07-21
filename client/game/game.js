@@ -13,6 +13,7 @@ export class Game {
    */
   constructor({ renderer, controls }) {
     this.renderer = renderer;
+    this.controls = controls;
 
     //TODO: remove TEST DATA
     this.sprites = [];
@@ -41,6 +42,8 @@ export class Game {
 
   render() {
     this.renderer.clear();
+
+    this.renderer.drawSelector(this.controls.getSelectedCords());
 
     this.renderer.drawSprites(this.sprites);
   }

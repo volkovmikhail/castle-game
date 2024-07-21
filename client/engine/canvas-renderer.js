@@ -1,4 +1,5 @@
-import { BACKGROUND_COLOR } from '../constants/colors.js';
+import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
+import { SELECTOR_LINE_WIDTH, TILE_SIZE } from '../constants/sizes.js';
 
 export class CanvasRenderer {
   constructor({ canvas, tileMap }) {
@@ -35,5 +36,12 @@ export class CanvasRenderer {
         tileData.height //height on canvas
       );
     }
+  }
+
+  drawSelector({ tx, ty }) {
+    this.ctx.lineWidth = SELECTOR_LINE_WIDTH;
+    this.ctx.strokeStyle = SELECTOR_COLOR;
+
+    this.ctx.strokeRect(tx, ty, TILE_SIZE, TILE_SIZE);
   }
 }
