@@ -4,6 +4,7 @@ export class StateManager {
    * @type {Cell[]}
    */
   #state = [];
+  // new Map<"X:Y", Cell> - maybe use this data structure
 
   getState() {
     return this.#state;
