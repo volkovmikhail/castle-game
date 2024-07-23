@@ -1,10 +1,10 @@
 export class StateManager {
   /**
    * @typedef {import('./cell.js').Cell} Cell
-   * @type {Cell[]}
+   * @type {Map<string, Cell>}
+   * key - <X:Y> format
    */
   #state = [];
-  // new Map<"X:Y", Cell> - maybe use this data structure
 
   getState() {
     return this.#state;

@@ -30,7 +30,7 @@ export class Game {
 
       offset += 32;
 
-      if (offset >= 128) {
+      if (offset >= 496) {
         offset = 16;
         iteration++;
       }
@@ -54,8 +54,8 @@ export class Game {
       return Math.floor(Math.random() * (max - min + 1) + min);
     };
 
-    const r = rnd(0, 8);
+    // const r = rnd(0, 8);
 
-    this.sprites[r].setPos({ x: this.sprites[r].getPos().x + 1 });
+    // this.sprites[r].setPos({ x: this.sprites[r].getPos().x + 1 });
   }
 }
