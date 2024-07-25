@@ -7,13 +7,15 @@ export class Game {
    *
    * @typedef {import('../engine/canvas-renderer.js').CanvasRenderer} CanvasRenderer
    * @typedef {import('../engine/controls.js').Controls} Controls
+   * @typedef {import('../engine/state/state-manager.js').StateManager} StateManager
    *
    * @constructor
-   * @param {{ renderer: CanvasRenderer, controls: Controls }} options
+   * @param {{ renderer: CanvasRenderer, controls: Controls, stateManager: StateManager }} options
    */
-  constructor({ renderer, controls }) {
+  constructor({ renderer, controls, stateManager }) {
     this.renderer = renderer;
     this.controls = controls;
+    this.stateManager = stateManager;
 
     //TODO: remove TEST DATA
     this.sprites = [];
@@ -21,11 +23,10 @@ export class Game {
     let iteration = 1;
 
     for (const key in tiles) {
-      const sprite = new Sprite(tiles[key]);
-
-      sprite.setPos({
+      this.stateManager.setCell({
         x: offset,
         y: 32 * iteration,
+        tileData: tiles[key],
       });
 
       offset += 32;
@@ -34,8 +35,6 @@ export class Game {
         offset = 16;
         iteration++;
       }
-
-      this.sprites.push(sprite);
     }
     //END TEST DATA
   }
@@ -45,7 +44,7 @@ export class Game {
 
     this.renderer.drawSelector(this.controls.getSelectedCords());
 
-    this.renderer.drawSprites(this.sprites);
+    this.renderer.drawState({ state: this.stateManager.getState() });
   }
 
   update(timeStep) {
