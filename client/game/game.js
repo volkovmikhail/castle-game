@@ -48,6 +48,13 @@ export class Game {
   }
 
   update(timeStep) {
+    const clickedCords = this.controls.getClickedCords();
+
+    if (clickedCords !== null) {
+      this.stateManager.setCell({ x: clickedCords.tx, y: clickedCords.ty, tileData: tiles.houseBlacksmith });
+      console.log(this.stateManager.getState());
+    }
+
     const rnd = (min, max) => {
       // min and max included
       return Math.floor(Math.random() * (max - min + 1) + min);

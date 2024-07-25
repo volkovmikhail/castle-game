@@ -12,15 +12,28 @@ export class Controls {
   }
 
   /**
-   * @type {{ x: number, y: number, tx: number, ty:number }}
+   * @typedef {{ x: number, y: number, tx: number, ty:number }} Coords
+   *
+   * @type {Coords}
    */
   #selectedCords;
+
+  /**
+   * @type {Coords}
+   */
+  #clickedCords;
 
   init() {
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.calculateCords(event);
 
       this.#setSelectedCords(cords);
+    });
+
+    this.canvas.addEventListener('mouseup', (event) => {
+      const cords = this.calculateCords(event);
+
+      this.#setClickedCords(cords);
     });
   }
 
@@ -44,7 +57,23 @@ export class Controls {
     this.#selectedCords = cords;
   }
 
+  #setClickedCords(cords) {
+    this.#clickedCords = cords;
+  }
+
   getSelectedCords() {
     return this.#selectedCords ?? { tx: -TILE_SIZE, ty: -TILE_SIZE, x: -1, y: -1 };
+  }
+
+  getClickedCords() {
+    if (this.#clickedCords === null) {
+      return null;
+    }
+
+    const cords = { ...this.#clickedCords };
+
+    this.#clickedCords = null;
+
+    return cords;
   }
 }
