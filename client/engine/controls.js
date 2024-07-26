@@ -1,5 +1,8 @@
 import { TILE_SIZE } from '../constants/sizes.js';
 
+/**
+ * @typedef {{ x: number, y: number, tx: number, ty:number }} Coords
+ */
 export class Controls {
   /**
    * Creates an instance of Controls.
@@ -12,32 +15,30 @@ export class Controls {
   }
 
   /**
-   * @typedef {{ x: number, y: number, tx: number, ty:number }} Coords
-   *
    * @type {Coords}
    */
-  #selectedCords;
+  #selectedCoords;
 
   /**
    * @type {Coords}
    */
-  #clickedCords;
+  #clickedCoords;
 
   init() {
     this.canvas.addEventListener('mousemove', (event) => {
-      const cords = this.calculateCords(event);
+      const cords = this.calculateCoords(event);
 
-      this.#setSelectedCords(cords);
+      this.#setSelectedCoords(cords);
     });
 
     this.canvas.addEventListener('mouseup', (event) => {
-      const cords = this.calculateCords(event);
+      const cords = this.calculateCoords(event);
 
-      this.#setClickedCords(cords);
+      this.#setClickedCoords(cords);
     });
   }
 
-  calculateCords(event) {
+  calculateCoords(event) {
     const rect = this.canvas.getBoundingClientRect();
 
     //calculate canvas relative cords
@@ -53,26 +54,26 @@ export class Controls {
     return { x, y, tx, ty };
   }
 
-  #setSelectedCords(cords) {
-    this.#selectedCords = cords;
+  #setSelectedCoords(cords) {
+    this.#selectedCoords = cords;
   }
 
-  #setClickedCords(cords) {
-    this.#clickedCords = cords;
+  #setClickedCoords(cords) {
+    this.#clickedCoords = cords;
   }
 
-  getSelectedCords() {
-    return this.#selectedCords ?? { tx: -TILE_SIZE, ty: -TILE_SIZE, x: -1, y: -1 };
+  getSelectedCoords() {
+    return this.#selectedCoords ?? { tx: -TILE_SIZE, ty: -TILE_SIZE, x: -1, y: -1 };
   }
 
-  getClickedCords() {
-    if (this.#clickedCords === null) {
+  getClickedCoords() {
+    if (this.#clickedCoords === null) {
       return null;
     }
 
-    const cords = { ...this.#clickedCords };
+    const cords = { ...this.#clickedCoords };
 
-    this.#clickedCords = null;
+    this.#clickedCoords = null;
 
     return cords;
   }

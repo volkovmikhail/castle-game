@@ -8,4 +8,5 @@ body {
   width: 100%;
   display: block;
   image-rendering: pixelated;
+  border: 1px solid #777;
 }

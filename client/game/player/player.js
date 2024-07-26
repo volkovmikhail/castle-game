@@ -1,6 +1,6 @@
 export class Player {
   /**
-   * @type {any[]}
+   * @type {number}
    */
-  buildings = [];
+  userId;
 }

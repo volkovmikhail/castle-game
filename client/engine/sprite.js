@@ -1,12 +1,17 @@
+/**
+ * @typedef {{
+ *     mapX: number,
+ *     mapY: number,
+ *     width: number,
+ *     height: number
+ *   }
+ * } TileData
+ */
+
 export class Sprite {
   /**
-   * @param {{
-   *     mapX: number,
-   *     mapY: number,
-   *     width: number,
-   *     height: number
-   *   }
-   * } tileData
+   *
+   * @param {TileData} tileData
    */
   constructor(tileData) {
     this.tileData = tileData;
@@ -37,7 +42,7 @@ export class Sprite {
 
   /**
    *
-   * @returns {{ mapX: number; mapY: number; width: number; height: number; }}
+   * @returns {TileData}
    */
   getTileData() {
     return this.tileData;

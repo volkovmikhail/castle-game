@@ -42,13 +42,13 @@ export class Game {
   render() {
     this.renderer.clear();
 
-    this.renderer.drawSelector(this.controls.getSelectedCords());
+    this.renderer.drawSelector(this.controls.getSelectedCoords());
 
     this.renderer.drawState({ state: this.stateManager.getState() });
   }
 
   update(timeStep) {
-    const clickedCords = this.controls.getClickedCords();
+    const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {
       this.stateManager.setCell({ x: clickedCords.tx, y: clickedCords.ty, tileData: tiles.houseBlacksmith });

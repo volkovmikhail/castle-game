@@ -14,14 +14,18 @@ export class StateManager {
   }
 
   /**
-   * @param {{ x: number; y: number; tileData: {
+   * @param {{
+   *   x: number;
+   *   y: number;
+   *   tileData: {
    *     type: string,
    *     width: number,
    *     height: number
-   *   }
+   *   },
+   *   ownerUserId: string
    * }}} param
    */
-  setCell({ x, y, tileData }) {
+  setCell({ x, y, tileData, ownerUserId = null }) {
     const cellWidth = tileData.width / TILE_SIZE;
     const cellHeight = tileData.height / TILE_SIZE;
 
@@ -35,7 +39,7 @@ export class StateManager {
         const cellX = x + i * TILE_SIZE;
         const cellY = y + j * TILE_SIZE;
 
-        this.#state.set(`${cellX}:${cellY}`, new Cell({ spriteType: tileData.type, isRenderable }));
+        this.#state.set(`${cellX}:${cellY}`, new Cell({ spriteType: tileData.type, isRenderable, ownerUserId }));
       }
     }
   }
