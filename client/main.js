@@ -20,6 +20,8 @@ function main() {
 
   const game = new Game({ renderer, controls, stateManager });
 
+  game.init();
+
   const gameLoop = new GameLoop({ game });
 
   gameLoop.start();

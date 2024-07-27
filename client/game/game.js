@@ -1,5 +1,7 @@
 import { Sprite } from '../engine/sprite.js';
 import { tiles } from '../constants/tiles.js';
+import { TestTilesGenerator } from '../engine/test-tiles-generator.js';
+import { TreesGenerator } from './generators/trees-generator.js';
 
 export class Game {
   /**
@@ -16,27 +18,17 @@ export class Game {
     this.renderer = renderer;
     this.controls = controls;
     this.stateManager = stateManager;
+  }
 
-    //TODO: remove TEST DATA
-    this.sprites = [];
-    let offset = 16;
-    let iteration = 1;
+  init() {
+    //TestTilesGenerator.generateAllTiles(this.stateManager);
 
-    for (const key in tiles) {
-      this.stateManager.setCell({
-        x: offset,
-        y: 32 * iteration,
-        tileData: tiles[key],
-      });
+    const rendererSize = this.renderer.getRendererSize();
 
-      offset += 32;
-
-      if (offset >= 496) {
-        offset = 16;
-        iteration++;
-      }
-    }
-    //END TEST DATA
+    TreesGenerator.generateTrees(this.stateManager, {
+      from: { x: 0, y: 0 },
+      to: { x: rendererSize.width, y: rendererSize.height },
+    });
   }
 
   render() {
@@ -54,14 +46,5 @@ export class Game {
       this.stateManager.setCell({ x: clickedCords.tx, y: clickedCords.ty, tileData: tiles.houseBlacksmith });
       console.log(this.stateManager.getState());
     }
-
-    const rnd = (min, max) => {
-      // min and max included
-      return Math.floor(Math.random() * (max - min + 1) + min);
-    };
-
-    // const r = rnd(0, 8);
-
-    // this.sprites[r].setPos({ x: this.sprites[r].getPos().x + 1 });
   }
 }

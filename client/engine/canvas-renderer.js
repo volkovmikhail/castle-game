@@ -12,6 +12,16 @@ export class CanvasRenderer {
     this.ctx = canvas.getContext('2d');
   }
 
+  /**
+   * @returns {{ width: number; height: number; }}
+   */
+  getRendererSize() {
+    return {
+      width: this.canvas.width,
+      height: this.canvas.height,
+    };
+  }
+
   clear() {
     this.ctx.fillStyle = BACKGROUND_COLOR;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);

@@ -22,10 +22,11 @@ export class StateManager {
    *     width: number,
    *     height: number
    *   },
-   *   ownerUserId: string
+   *   ownerUserId: string,
+   *   entity: any
    * }}} param
    */
-  setCell({ x, y, tileData, ownerUserId = null }) {
+  setCell({ x, y, tileData, entity, ownerUserId = null }) {
     const cellWidth = tileData.width / TILE_SIZE;
     const cellHeight = tileData.height / TILE_SIZE;
 
@@ -39,7 +40,15 @@ export class StateManager {
         const cellX = x + i * TILE_SIZE;
         const cellY = y + j * TILE_SIZE;
 
-        this.#state.set(`${cellX}:${cellY}`, new Cell({ spriteType: tileData.type, isRenderable, ownerUserId }));
+        this.#state.set(
+          `${cellX}:${cellY}`,
+          new Cell({
+            spriteType: tileData.type,
+            isRenderable,
+            ownerUserId,
+            entity: isRenderable ? entity : null, // set entity only for renderable cells, to avoid entity duplication
+          })
+        );
       }
     }
   }

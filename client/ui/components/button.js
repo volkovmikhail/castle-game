@@ -1,7 +1,7 @@
 export class Button {
   /**
    * Creates an instance of Button.
-   * @typedef {import('../engine/sprite.js').TileData} TileData
+   * @typedef {import('../../engine/sprite.js').TileData} TileData
    *
    * @constructor
    * @param {number} param.x
@@ -19,10 +19,14 @@ export class Button {
   }
 
   /**
-   * @typedef {import('../engine/controls.js').Coords} Coords
+   * @typedef {import('../../engine/controls.js').Coords} Coords
    * @param {{ clickedCoords: Coords }}
+   * @returns {boolean}
    */
   isClicked({ clickedCoords }) {
-    //logic
+    const x = clickedCoords.x;
+    const y = clickedCoords.y;
+
+    return x > button.x && x < button.x + button.width && y > button.y && y < button.y + button.height;
   }
 }
