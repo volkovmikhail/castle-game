@@ -24,6 +24,10 @@ export class Controls {
    */
   #clickedCoords;
 
+  #isMouseDown = false;
+  #startX;
+  #startY;
+
   init() {
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.calculateCoords(event);
@@ -31,10 +35,22 @@ export class Controls {
       this.#setSelectedCoords(cords);
     });
 
+    this.canvas.addEventListener('mousedown', (event) => {
+      this.#startX = event.clientX;
+      this.#startY = event.clientY;
+      this.#isMouseDown = true;
+    });
+
     this.canvas.addEventListener('mouseup', (event) => {
+      this.#isMouseDown = false;
+    });
+
+    this.canvas.addEventListener('click', (event) => {
       const cords = this.calculateCoords(event);
 
-      this.#setClickedCoords(cords);
+      if (this.#isClick(event)) {
+        this.#setClickedCoords(cords);
+      }
     });
   }
 
@@ -52,6 +68,21 @@ export class Controls {
     const ty = Math.floor(y / TILE_SIZE) * TILE_SIZE;
 
     return { x, y, tx, ty };
+  }
+
+  #isClick(event) {
+    if (!this.#isMouseDown) {
+      const deltaX = event.clientX - this.#startX;
+      const deltaY = event.clientY - this.#startY;
+
+      if (Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) {
+        return true;
+      } else {
+        event.stopImmediatePropagation();
+
+        return false;
+      }
+    }
   }
 
   #setSelectedCoords(cords) {
