@@ -22,20 +22,36 @@ export class Controls {
   /**
    * @type {Coords}
    */
-  #clickedCoords;
+  #clickedStateCoords;
 
   #isMouseDown = false;
   #startX;
   #startY;
 
+  #canvasStartX;
+  #canvasStartY;
+
+  #scrollOffsetX = 0;
+  #scrollOffsetY = 0;
+
   init() {
     this.canvas.addEventListener('mousemove', (event) => {
-      const cords = this.calculateCoords(event);
+      const cords = this.#calculateSelectorCoords(event);
+      if (this.#isMouseDown) {
+        const offset = this.#calculateOffset(event);
+
+        this.#setScrollOffset(offset);
+      }
 
       this.#setSelectedCoords(cords);
     });
 
     this.canvas.addEventListener('mousedown', (event) => {
+      const { x, y } = this.#calculateCanvasRelativeCoords(event);
+
+      this.#canvasStartX = x - this.#scrollOffsetX;
+      this.#canvasStartY = y - this.#scrollOffsetY;
+
       this.#startX = event.clientX;
       this.#startY = event.clientY;
       this.#isMouseDown = true;
@@ -46,7 +62,7 @@ export class Controls {
     });
 
     this.canvas.addEventListener('click', (event) => {
-      const cords = this.calculateCoords(event);
+      const cords = this.#calculateClickedStateCoords(event);
 
       if (this.#isClick(event)) {
         this.#setClickedCoords(cords);
@@ -54,20 +70,63 @@ export class Controls {
     });
   }
 
-  calculateCoords(event) {
+  /**
+   * Returns coords related to State Map
+   *
+   * @param {*} event
+   * @returns {{tx: number, ty: number}}
+   */
+  #calculateClickedStateCoords(event) {
+    const { x, y } = this.#calculateCanvasRelativeCoords(event);
+
+    const { tx, ty } = this.#calculateTileSizedCoords({ canvasX: x, canvasY: y });
+
+    return { tx: tx - this.#scrollOffsetX, ty: ty - this.#scrollOffsetY };
+  }
+
+  /**
+   * Returns tile coords related to current player view (just applies offset and adjusts)
+   *
+   * @param {*} event
+   * @returns {Coords}
+   */
+  #calculateSelectorCoords(event) {
+    const { x, y } = this.#calculateCanvasRelativeCoords(event);
+
+    const { tx, ty } = this.#calculateTileSizedCoords({ canvasX: x, canvasY: y });
+
+    return { tx, ty, x, y };
+  }
+
+  /**
+   * @param {{ canvasX: number; canvasY: number; }}
+   * @returns {{ tx: number; ty: number; }}
+   */
+  #calculateTileSizedCoords({ canvasX, canvasY }) {
+    const tileSizeOffsetX = this.#scrollOffsetX % TILE_SIZE;
+    const tileSizeOffsetY = this.#scrollOffsetY % TILE_SIZE;
+
+    const tx = Math.floor((canvasX - tileSizeOffsetX) / TILE_SIZE) * TILE_SIZE;
+    const ty = Math.floor((canvasY - tileSizeOffsetY) / TILE_SIZE) * TILE_SIZE;
+
+    return { tx: tx + tileSizeOffsetX, ty: ty + tileSizeOffsetY };
+  }
+
+  #calculateCanvasRelativeCoords(event) {
     const rect = this.canvas.getBoundingClientRect();
 
-    //calculate canvas relative cords
     const scaleX = this.canvas.width / rect.width;
     const scaleY = this.canvas.height / rect.height;
-    const x = (event.clientX - rect.left) * scaleX;
-    const y = (event.clientY - rect.top) * scaleY;
+    const x = Math.round((event.clientX - rect.left) * scaleX);
+    const y = Math.round((event.clientY - rect.top) * scaleY);
 
-    //calculate mouse tile
-    const tx = Math.floor(x / TILE_SIZE) * TILE_SIZE;
-    const ty = Math.floor(y / TILE_SIZE) * TILE_SIZE;
+    return { x, y };
+  }
 
-    return { x, y, tx, ty };
+  #calculateOffset(event) {
+    const { x, y } = this.#calculateCanvasRelativeCoords(event);
+
+    return { offsetX: x - this.#canvasStartX, offsetY: y - this.#canvasStartY };
   }
 
   #isClick(event) {
@@ -85,26 +144,43 @@ export class Controls {
     }
   }
 
+  #setScrollOffset({ offsetX, offsetY }) {
+    this.#scrollOffsetX = offsetX;
+    this.#scrollOffsetY = offsetY;
+  }
+
+  getScrollOffset() {
+    return {
+      offsetX: this.#scrollOffsetX,
+      offsetY: this.#scrollOffsetY,
+    };
+  }
+
   #setSelectedCoords(cords) {
     this.#selectedCoords = cords;
   }
 
   #setClickedCoords(cords) {
-    this.#clickedCoords = cords;
+    this.#clickedStateCoords = cords;
   }
 
   getSelectedCoords() {
     return this.#selectedCoords ?? { tx: -TILE_SIZE, ty: -TILE_SIZE, x: -1, y: -1 };
   }
 
+  /**
+   * returns game (state) related coords
+   *
+   * @returns {{ tx: number; ty: number; }}
+   */
   getClickedCoords() {
-    if (this.#clickedCoords === null) {
+    if (this.#clickedStateCoords === null) {
       return null;
     }
 
-    const cords = { ...this.#clickedCoords };
+    const cords = { ...this.#clickedStateCoords };
 
-    this.#clickedCoords = null;
+    this.#clickedStateCoords = null;
 
     return cords;
   }

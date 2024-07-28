@@ -36,7 +36,7 @@ export class Game {
 
     this.renderer.drawSelector(this.controls.getSelectedCoords());
 
-    this.renderer.drawState({ state: this.stateManager.getState() });
+    this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
   }
 
   update(timeStep) {

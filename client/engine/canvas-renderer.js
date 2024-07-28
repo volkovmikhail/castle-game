@@ -58,6 +58,7 @@ export class CanvasRenderer {
       tileData.height //height on canvas
     );
   }
+
   drawSelector({ tx, ty }) {
     this.ctx.lineWidth = SELECTOR_LINE_WIDTH;
     this.ctx.strokeStyle = SELECTOR_COLOR;
@@ -66,12 +67,15 @@ export class CanvasRenderer {
   }
 
   /**
-   * @param {{state: Map<string, Cell>}}
+   * @param {{state: Map<string, Cell>, scrollOffset: {offsetX: number, offsetY: number}}}
    */
-  drawState({ state }) {
+  drawState({ state, scrollOffset: { offsetX, offsetY } }) {
     for (const [cords, cell] of state.entries()) {
       if (cell.isRenderable) {
-        const [x, y] = cords.split(':');
+        let [x, y] = cords.split(':');
+
+        x = Number(x) + offsetX;
+        y = Number(y) + offsetY;
 
         this.drawCell({ x, y, cell });
       }
