@@ -5,6 +5,8 @@ project TODO list:
 - [x] screen scroll
 - [ ] earn resources
 - [ ] axe tool for removing trees
+- [ ] animations
+- [ ] way to draw & render little details (less then 16 px )
 
 Online mode:
 

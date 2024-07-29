@@ -4,9 +4,51 @@ body {
   height: 100%;
 }
 
+* {
+  margin: 0;
+  padding: 0;
+}
+
 #c {
   width: 100%;
   display: block;
   image-rendering: pixelated;
-  border: 1px solid #777;
+  position: relative;
+  z-index: 0;
+}
+
+.game {
+  width: 100%;
+  height: 100%;
+}
+
+.ui {
+  top: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.game-container {
+  margin: auto;
+  width: 100%;
+  height: fit-content;
+}
+
+.building-selector {
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  position: relative;
+}
+
+.building-selector > .img {
+  width: 16px;
+  height: 16px;
+  background-image: url('assets/tilemap.png');
+  background-position: -32px 0px;
+  position: absolute;
+  transform: scale(3);
+  transform-origin: top left;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
