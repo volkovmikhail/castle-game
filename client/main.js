@@ -3,6 +3,7 @@ import { Controls } from './engine/controls.js';
 import { GameLoop } from './engine/game-loop.js';
 import { StateManager } from './engine/state/state-manager.js';
 import { Game } from './game/game.js';
+import { UI } from './ui/ui.js';
 
 const canvas = document.getElementById('c');
 
@@ -15,10 +16,11 @@ function main() {
   const renderer = new CanvasRenderer({ canvas, tileMap });
   const controls = new Controls({ canvas });
   const stateManager = new StateManager();
+  const ui = new UI();
 
   controls.init();
 
-  const game = new Game({ renderer, controls, stateManager });
+  const game = new Game({ renderer, controls, stateManager, ui });
 
   game.init();
 

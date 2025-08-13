@@ -10,14 +10,16 @@ export class Game {
    * @typedef {import('../engine/canvas-renderer.js').CanvasRenderer} CanvasRenderer
    * @typedef {import('../engine/controls.js').Controls} Controls
    * @typedef {import('../engine/state/state-manager.js').StateManager} StateManager
+   * @typedef {import('../ui/ui.js').UI} UI
    *
    * @constructor
-   * @param {{ renderer: CanvasRenderer, controls: Controls, stateManager: StateManager }} options
+   * @param {{ renderer: CanvasRenderer, controls: Controls, stateManager: StateManager, ui: UI }} options
    */
-  constructor({ renderer, controls, stateManager }) {
+  constructor({ renderer, controls, stateManager, ui }) {
     this.renderer = renderer;
     this.controls = controls;
     this.stateManager = stateManager;
+    this.ui = ui;
   }
 
   init() {
@@ -43,7 +45,11 @@ export class Game {
     const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {
-      this.stateManager.setCell({ x: clickedCords.tx, y: clickedCords.ty, tileData: tiles.houseBlacksmith });
+      this.stateManager.setCell({
+        x: clickedCords.tx,
+        y: clickedCords.ty,
+        tileData: tiles[this.ui.getSelectedBuilding() ?? 'houseBlacksmith'],
+      });
       console.log(this.stateManager.getState());
     }
   }

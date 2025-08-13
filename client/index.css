@@ -10,21 +10,24 @@ body {
 }
 
 #c {
-  width: 100%;
+  width: 80vh;
   display: block;
   image-rendering: pixelated;
   position: relative;
   z-index: 0;
+  border-radius: 3px;
 }
 
 .game {
-  width: 100%;
-  height: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  width: fit-content;
 }
 
 .ui {
+  width: 100px;
   top: 0;
-  position: absolute;
+  position: relative;
   z-index: 1;
 }
 
@@ -35,20 +38,27 @@ body {
 }
 
 .building-selector {
-  width: 48px;
+  width: 100px;
   height: 48px;
   overflow: hidden;
   position: relative;
+  display: flex;
 }
 
-.building-selector > .img {
+.building-selector .img {
   width: 16px;
   height: 16px;
   background-image: url('assets/tilemap.png');
   background-position: -32px 0px;
-  position: absolute;
+  position: relative;
   transform: scale(3);
+  cursor: pointer;
   transform-origin: top left;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+.building-selector-item{
+  width: 48px;
+  height: 48px;
 }
