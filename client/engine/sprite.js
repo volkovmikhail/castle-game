@@ -1,9 +1,12 @@
+import { runSpritePostDraw } from './sprite-post-draw-registry.js';
+
 /**
  * @typedef {{
  *     mapX: number,
  *     mapY: number,
  *     width: number,
- *     height: number
+ *     height: number,
+ *     type?: string
  *   }
  * } TileData
  */
@@ -46,5 +49,15 @@ export class Sprite {
    */
   getTileData() {
     return this.tileData;
+  }
+
+  /**
+   * Доп. отрисовка поверх кадра (регистрируется по `tileData.type` в sprite-post-draw-registry).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {CanvasImageSource} tileMap
+   * @param {number} [timeMs]
+   */
+  drawPostEffects(ctx, tileMap, timeMs = performance.now()) {
+    runSpritePostDraw(this, ctx, tileMap, timeMs);
   }
 }

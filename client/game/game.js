@@ -1,5 +1,6 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
+import { SnowOverlay } from '../engine/atmosphere/snow-overlay.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 
 export class Game {
@@ -19,6 +20,9 @@ export class Game {
     this.controls = controls;
     this.stateManager = stateManager;
     this.ui = ui;
+
+    /** @type {SnowOverlay | null} */
+    this.snow = null;
   }
 
   init() {
@@ -29,6 +33,11 @@ export class Game {
     TreesGenerator.generateTrees(this.stateManager, {
       from: { x: 0, y: 0 },
       to: { x: rendererSize.width, y: rendererSize.height },
+    });
+
+    this.snow = new SnowOverlay({
+      width: rendererSize.width,
+      height: rendererSize.height,
     });
   }
 
@@ -47,9 +56,13 @@ export class Game {
     });
 
     this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
+
+    this.snow?.render(this.renderer.ctx);
   }
 
   update(timeStep) {
+    this.snow?.update(timeStep);
+
     const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {
