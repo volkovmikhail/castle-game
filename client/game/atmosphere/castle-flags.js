@@ -1,4 +1,4 @@
-import { registerSpritePostDraw } from '../sprite-post-draw-registry.js';
+import { registerSpritePostDraw } from '../../engine/sprite-post-draw-registry.js';
 
 const FLAG_FRAME = 8;
 const FRAMES = 4;

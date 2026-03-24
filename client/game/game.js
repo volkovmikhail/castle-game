@@ -1,6 +1,7 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
-import { SnowOverlay } from '../engine/atmosphere/snow-overlay.js';
+import './atmosphere/castle-flags.js';
+import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 
 export class Game {

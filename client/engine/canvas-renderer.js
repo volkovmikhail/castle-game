@@ -1,7 +1,6 @@
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
 import { SELECTOR_LINE_WIDTH, TILE_SIZE } from '../constants/sizes.js';
 import { tiles } from '../constants/tiles.js';
-import './atmosphere/castle-flags.js';
 import { Sprite } from './sprite.js';
 import { Cell } from './state/cell.js';
 
