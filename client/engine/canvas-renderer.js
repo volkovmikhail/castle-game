@@ -59,11 +59,14 @@ export class CanvasRenderer {
     );
   }
 
-  drawSelector({ tx, ty }) {
+  /**
+   * @param {{ tx: number; ty: number; width?: number; height?: number }} param
+   */
+  drawSelector({ tx, ty, width = TILE_SIZE, height = TILE_SIZE }) {
     this.ctx.lineWidth = SELECTOR_LINE_WIDTH;
     this.ctx.strokeStyle = SELECTOR_COLOR;
 
-    this.ctx.strokeRect(tx, ty, TILE_SIZE, TILE_SIZE);
+    this.ctx.strokeRect(tx, ty, width, height);
   }
 
   /**

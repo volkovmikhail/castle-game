@@ -1,6 +1,5 @@
-import { Sprite } from '../engine/sprite.js';
 import { tiles } from '../constants/tiles.js';
-import { TestTilesGenerator } from '../engine/test-tiles-generator.js';
+import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 
 export class Game {
@@ -36,7 +35,16 @@ export class Game {
   render() {
     this.renderer.clear();
 
-    this.renderer.drawSelector(this.controls.getSelectedCoords());
+    const buildingKey = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
+    const tileData = tiles[buildingKey];
+    const { tx, ty } = this.controls.getSelectedCoords();
+
+    this.renderer.drawSelector({
+      tx,
+      ty,
+      width: tileData.width,
+      height: tileData.height,
+    });
 
     this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
   }
@@ -48,7 +56,7 @@ export class Game {
       this.stateManager.setCell({
         x: clickedCords.tx,
         y: clickedCords.ty,
-        tileData: tiles[this.ui.getSelectedBuilding() ?? 'houseBlacksmith'],
+        tileData: tiles[this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY],
       });
       console.log(this.stateManager.getState());
     }
