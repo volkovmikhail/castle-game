@@ -3,4 +3,4 @@
  * в области `.canvas-stage`. Внутреннее разрешение буфера = размер стейджа / N (с floor).
  * Увеличьте значение для крупнее пикселей (и меньшего охвата мира при том же окне).
  */
-export const CANVAS_PIXEL_SCALE = 2;
+export const CANVAS_PIXEL_SCALE = 3;

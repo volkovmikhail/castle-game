@@ -2,6 +2,21 @@ import { tiles } from '../constants/tiles.js';
 import { BUILDINGS_TOOLBAR, DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 
 export class UI {
+  static #previewTargetSize = 56;
+
+  static #previewPadding = 10;
+
+  /**
+   * @param {string} key
+   * @returns {string}
+   */
+  static #getBuildingLabel(key) {
+    const trimmed = key.replace(/^house/, '');
+    const base = trimmed.length > 0 ? trimmed : key;
+    const spaced = base.replace(/([a-z])([A-Z])/g, '$1 $2');
+    return `${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}`;
+  }
+
   /**
    * @type {string}
    */
@@ -31,15 +46,25 @@ export class UI {
       const item = document.createElement('div');
       item.className = 'building-selector-item';
       item.dataset.building = key;
+      const spriteSide = Math.max(spriteW, spriteH);
+      const previewScale = Math.max(1, UI.#previewTargetSize / spriteSide);
+      item.style.setProperty('--preview-w', `${spriteW}px`);
+      item.style.setProperty('--preview-h', `${spriteH}px`);
+      item.style.setProperty('--preview-scale', `${previewScale}`);
+      item.style.setProperty('--preview-pad', `${UI.#previewPadding}px`);
 
       const preview = document.createElement('div');
-      preview.className =
-        spriteW > 16 || spriteH > 16
-          ? 'building-preview building-preview--32'
-          : 'building-preview building-preview--16';
+      preview.className = 'building-preview';
+      preview.style.width = `${spriteW}px`;
+      preview.style.height = `${spriteH}px`;
       preview.style.backgroundPosition = `-${tile.mapX}px -${tile.mapY}px`;
 
+      const label = document.createElement('span');
+      label.className = 'building-label';
+      label.textContent = UI.#getBuildingLabel(key);
+
       item.appendChild(preview);
+      item.appendChild(label);
       root.appendChild(item);
 
       item.addEventListener('click', () => {
