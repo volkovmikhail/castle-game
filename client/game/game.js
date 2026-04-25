@@ -58,11 +58,11 @@ export class Game {
 
     this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
 
-    this.snow?.render(this.renderer.ctx);
+    this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
   }
 
   update(timeStep) {
-    this.snow?.update(timeStep);
+    this.snow?.update(timeStep, this.controls.getScrollOffset());
 
     const clickedCords = this.controls.getClickedCoords();
 

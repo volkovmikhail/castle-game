@@ -1,7 +1,7 @@
 import { SNOW_COLOR } from '../../constants/colors.js';
 
 /**
- * Декоративный снег в координатах канваса (вид сверху: «земля» — случайная Y на поле).
+ * Декоративный снег в координатах мира (как клетки в StateManager), на экране — плюс scrollOffset.
  * Каждая снежинка — ровно 1 пиксель.
  */
 export class SnowOverlay {
@@ -12,26 +12,32 @@ export class SnowOverlay {
     this.w = width;
     this.h = height;
     this.flakes = [];
+    const scroll0 = { offsetX: 0, offsetY: 0 };
     for (let i = 0; i < flakeCount; i++) {
-      this.flakes.push(this.#spawn(true));
+      this.flakes.push(this.#spawn(true, scroll0));
     }
   }
 
   /**
-   * Случайная «высота» снега на поле (координата Y в системе канваса).
+   * Левый верхний угол мира, видимого в кадре (как у `drawState`: экран = мир + offset).
+   *
+   * @param {{ offsetX: number; offsetY: number }} scroll
+   * @returns {{ left: number; top: number }}
    */
-  #randomGroundY() {
-    return Math.floor(Math.random() * this.h);
+  #visibleOrigin(scroll) {
+    return { left: -scroll.offsetX, top: -scroll.offsetY };
   }
 
   /**
    * @param {boolean} scatterY
+   * @param {{ offsetX: number; offsetY: number }} scroll
    */
-  #spawn(scatterY) {
-    const groundY = this.#randomGroundY();
+  #spawn(scatterY, scroll) {
+    const { left, top } = this.#visibleOrigin(scroll);
+    const groundY = top + Math.floor(Math.random() * this.h);
     return {
-      x: Math.random() * this.w,
-      y: scatterY ? Math.random() * this.h : -2 - Math.random() * 50,
+      x: left + Math.random() * this.w,
+      y: scatterY ? top + Math.random() * this.h : top - 2 - Math.random() * 50,
       groundY,
       vy: 45 + Math.random() * 95,
       vx: (Math.random() - 0.5) * 28,
@@ -42,16 +48,47 @@ export class SnowOverlay {
   }
 
   /**
-   * @param {number} dtMs
+   * @param {{ x: number; y: number }} f
+   * @param {{ offsetX: number; offsetY: number }} scroll
    */
-  update(dtMs) {
+  #isOutsideCameraView(f, scroll) {
+    const m = 120;
+    const { left, top } = this.#visibleOrigin(scroll);
+    const right = left + this.w;
+    const bottom = top + this.h;
+    return (
+      f.x < left - m ||
+      f.x > right + m ||
+      f.y < top - m - 80 ||
+      f.y > bottom + m
+    );
+  }
+
+  /**
+   * Падение ушло за пределы видимой области камеры — переспавн из неба в текущем кадре.
+   *
+   * @param {{ offsetX: number; offsetY: number }} scroll
+   */
+  #recenterIfOffCamera(f, scroll) {
+    if (this.#isOutsideCameraView(f, scroll)) {
+      Object.assign(f, this.#spawn(false, scroll));
+    }
+  }
+
+  /**
+   * @param {number} dtMs
+   * @param {{ offsetX: number; offsetY: number }} scrollOffset
+   */
+  update(dtMs, scrollOffset) {
     const now = performance.now();
     const sec = dtMs / 1000;
+    const { left } = this.#visibleOrigin(scrollOffset);
+    const band = this.w + 6;
 
     for (const f of this.flakes) {
       if (f.mode === 'settled') {
-        if (now >= f.settleEndMs) {
-          Object.assign(f, this.#spawn(false));
+        if (now >= f.settleEndMs || this.#isOutsideCameraView(f, scrollOffset)) {
+          Object.assign(f, this.#spawn(false, scrollOffset));
         }
         continue;
       }
@@ -60,12 +97,17 @@ export class SnowOverlay {
       f.x += (f.vx + Math.sin(f.phase) * 18) * sec;
       f.y += f.vy * sec;
 
-      if (f.x < -3) {
-        f.x += this.w + 6;
+      let rel = f.x - left;
+      while (rel < -3) {
+        f.x += band;
+        rel = f.x - left;
       }
-      if (f.x > this.w + 3) {
-        f.x -= this.w + 6;
+      while (rel > this.w + 3) {
+        f.x -= band;
+        rel = f.x - left;
       }
+
+      this.#recenterIfOffCamera(f, scrollOffset);
 
       if (f.y >= f.groundY) {
         f.y = f.groundY;
@@ -75,24 +117,28 @@ export class SnowOverlay {
           f.vx = 0;
           f.settleEndMs = now + 1800 + Math.random() * 4200;
         } else {
-          Object.assign(f, this.#spawn(false));
+          Object.assign(f, this.#spawn(false, scrollOffset));
         }
       }
     }
   }
 
   /**
+   * Те же смещения, что у `drawState`: мир + offset = экран.
+   *
    * @param {CanvasRenderingContext2D} ctx
+   * @param {{ offsetX: number; offsetY: number }} scrollOffset
    */
-  render(ctx) {
+  render(ctx, scrollOffset) {
     const now = performance.now();
+    const { offsetX, offsetY } = scrollOffset;
 
     ctx.save();
     ctx.fillStyle = SNOW_COLOR;
 
     for (const f of this.flakes) {
-      const x = Math.floor(f.x);
-      const y = Math.floor(f.y);
+      const x = Math.floor(f.x + offsetX);
+      const y = Math.floor(f.y + offsetY);
 
       if (f.mode === 'settled') {
         const left = f.settleEndMs - now;
