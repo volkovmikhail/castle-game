@@ -1,4 +1,9 @@
 import { TILE_SIZE } from '../constants/sizes.js';
+import {
+  WORLD_HEIGHT_PX,
+  WORLD_MIN_VISIBLE_EDGE_PX,
+  WORLD_WIDTH_PX,
+} from '../constants/world.js';
 
 /**
  * @typedef {{ x: number, y: number, tx: number, ty:number }} Coords
@@ -22,7 +27,7 @@ export class Controls {
   /**
    * @type {Coords}
    */
-  #clickedStateCoords;
+  #clickedStateCoords = null;
 
   #isMouseDown = false;
   #startX;
@@ -33,8 +38,12 @@ export class Controls {
 
   #scrollOffsetX = 0;
   #scrollOffsetY = 0;
+  #viewportWidth = 0;
+  #viewportHeight = 0;
 
   init() {
+    this.setViewportSize({ width: this.canvas.width, height: this.canvas.height });
+
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.#calculateSelectorCoords(event);
       if (this.#isMouseDown) {
@@ -145,8 +154,13 @@ export class Controls {
   }
 
   #setScrollOffset({ offsetX, offsetY }) {
-    this.#scrollOffsetX = offsetX;
-    this.#scrollOffsetY = offsetY;
+    const minOffsetX = -WORLD_WIDTH_PX + WORLD_MIN_VISIBLE_EDGE_PX;
+    const maxOffsetX = this.#viewportWidth - WORLD_MIN_VISIBLE_EDGE_PX;
+    const minOffsetY = -WORLD_HEIGHT_PX + WORLD_MIN_VISIBLE_EDGE_PX;
+    const maxOffsetY = this.#viewportHeight - WORLD_MIN_VISIBLE_EDGE_PX;
+
+    this.#scrollOffsetX = Math.min(Math.max(offsetX, minOffsetX), maxOffsetX);
+    this.#scrollOffsetY = Math.min(Math.max(offsetY, minOffsetY), maxOffsetY);
   }
 
   getScrollOffset() {
@@ -183,5 +197,17 @@ export class Controls {
     this.#clickedStateCoords = null;
 
     return cords;
+  }
+
+  /**
+   * @param {{ width: number; height: number; }} param0
+   */
+  setViewportSize({ width, height }) {
+    this.#viewportWidth = width;
+    this.#viewportHeight = height;
+    this.#setScrollOffset({
+      offsetX: this.#scrollOffsetX,
+      offsetY: this.#scrollOffsetY,
+    });
   }
 }

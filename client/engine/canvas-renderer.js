@@ -1,6 +1,11 @@
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
 import { SELECTOR_LINE_WIDTH, TILE_SIZE } from '../constants/sizes.js';
 import { tiles } from '../constants/tiles.js';
+import {
+  WORLD_BORDER_COLOR,
+  WORLD_BORDER_INNER_WIDTH,
+  WORLD_BORDER_OUTER_WIDTH,
+} from '../constants/world.js';
 import { Sprite } from './sprite.js';
 import { Cell } from './state/cell.js';
 
@@ -98,5 +103,31 @@ export class CanvasRenderer {
     this.drawSprite(sprite);
 
     sprite.drawPostEffects(this.ctx, this.tileMap);
+  }
+
+  /**
+   * @param {{
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   *   x: number;
+   *   y: number;
+   *   width: number;
+   *   height: number;
+   * }} param0
+   */
+  drawWorldBorder({ scrollOffset: { offsetX, offsetY }, x, y, width, height }) {
+    const worldX = x + offsetX;
+    const worldY = y + offsetY;
+    const fenceThickness = Math.max(WORLD_BORDER_INNER_WIDTH, WORLD_BORDER_OUTER_WIDTH);
+
+    this.ctx.save();
+    this.ctx.fillStyle = WORLD_BORDER_COLOR;
+
+    // Рисуем забор в "внешней" клетке: он примыкает к границе мира,
+    // но не перекрывает последнюю игровую клетку.
+    this.ctx.fillRect(worldX, worldY - fenceThickness, width, fenceThickness);
+    this.ctx.fillRect(worldX, worldY + height, width, fenceThickness);
+    this.ctx.fillRect(worldX - fenceThickness, worldY - fenceThickness, fenceThickness, height + fenceThickness * 2);
+    this.ctx.fillRect(worldX + width, worldY - fenceThickness, fenceThickness, height + fenceThickness * 2);
+    this.ctx.restore();
   }
 }
