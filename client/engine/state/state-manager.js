@@ -9,6 +9,10 @@ export class StateManager {
    */
   #state = new Map();
 
+  clear() {
+    this.#state.clear();
+  }
+
   getState() {
     return this.#state;
   }

@@ -1,20 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Castle game</title>
 
     <link rel="stylesheet" href="index.css">
   </head>
   <body>
-    <div class="game-container">
-      <div class="game">
-        <div class="ui">
-          <div class="building-selector" id="building-selector"></div>
+    <div class="app-layout">
+      <aside class="sidebar" aria-label="Панель управления">
+        <div class="sidebar__inner">
+          <header class="sidebar__brand">
+            <span class="sidebar__title">Castle</span>
+          </header>
+
+          <section class="sidebar__section">
+            <h2 class="sidebar__section-title">Здание</h2>
+            <div class="building-selector" id="building-selector"></div>
+          </section>
         </div>
-        <canvas id="c" width="250" height="250"></canvas>
-      </div>
+      </aside>
+
+      <main class="canvas-stage">
+        <canvas id="c" aria-label="Игровое поле"></canvas>
+      </main>
     </div>
     <script type="module" src="main.js"></script>
   </body>

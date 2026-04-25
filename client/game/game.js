@@ -28,6 +28,16 @@ export class Game {
 
   init() {
     //TestTilesGenerator.generateAllTiles(this.stateManager);
+    this.#setupWorld();
+  }
+
+  /** Пересобрать мир под текущий размер канваса (resize окна / панели). */
+  resizeViewport() {
+    this.#setupWorld();
+  }
+
+  #setupWorld() {
+    this.stateManager.clear();
 
     const rendererSize = this.renderer.getRendererSize();
 
