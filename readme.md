@@ -1,14 +1,9 @@
-project TODO list:
+% node -v
+v24.11.0
 
-- [ ] UI
-- [ ] choosing building by ui
-- [x] screen scroll
-- [ ] earn resources
-- [ ] axe tool for removing trees
-- [ ] animations
-- [ ] way to draw & render little details (less then 16 px )
+% npm run start
 
-Online mode:
+> start
+> node server/app.js
 
-- [ ] sync state with server and other players
-- [ ] destroy other players mechanics
+Server running... http://localhost:3000

@@ -102,7 +102,7 @@ export class CanvasRenderer {
 
     this.drawSprite(sprite);
 
-    sprite.drawPostEffects(this.ctx, this.tileMap);
+    sprite.drawPostEffects(this.ctx, this.tileMap, performance.now(), cell);
   }
 
   /**

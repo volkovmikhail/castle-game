@@ -26,12 +26,19 @@ export class UI {
    * @type {HTMLElement | null}
    */
   #selectedItemEl = null;
+  #playerColorDotEl = null;
+  #playerColorLabelEl = null;
+  #toastRootEl = null;
 
   constructor() {
     this.#init();
   }
 
   #init() {
+    this.#playerColorDotEl = document.getElementById('player-color-dot');
+    this.#playerColorLabelEl = document.getElementById('player-color-label');
+    this.#toastRootEl = document.getElementById('ui-toast-root');
+
     const root = document.getElementById('building-selector');
     if (!root) {
       return;
@@ -92,5 +99,42 @@ export class UI {
 
   getSelectedBuilding() {
     return this.#selectedBuilding;
+  }
+
+  /**
+   * @param {{ title: string; color: string; }} playerProfile
+   */
+  setPlayerBadge({ title, color }) {
+    if (this.#playerColorLabelEl) {
+      this.#playerColorLabelEl.textContent = title;
+    }
+    if (this.#playerColorDotEl) {
+      this.#playerColorDotEl.style.background = color;
+    }
+  }
+
+  /**
+   * @param {string} message
+   */
+  showToast(message) {
+    if (!this.#toastRootEl) {
+      return;
+    }
+
+    const toastEl = document.createElement('div');
+    toastEl.className = 'ui-toast';
+    toastEl.textContent = message;
+    this.#toastRootEl.appendChild(toastEl);
+
+    requestAnimationFrame(() => {
+      toastEl.classList.add('ui-toast--visible');
+    });
+
+    window.setTimeout(() => {
+      toastEl.classList.remove('ui-toast--visible');
+      window.setTimeout(() => {
+        toastEl.remove();
+      }, 180);
+    }, 2000);
   }
 }

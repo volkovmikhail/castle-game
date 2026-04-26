@@ -16,6 +16,14 @@
           </header>
 
           <section class="sidebar__section">
+            <h2 class="sidebar__section-title">Игрок</h2>
+            <div class="player-badge" id="player-badge">
+              <span class="player-badge__dot" id="player-color-dot" aria-hidden="true"></span>
+              <span class="player-badge__label" id="player-color-label">Не выбран</span>
+            </div>
+          </section>
+
+          <section class="sidebar__section">
             <h2 class="sidebar__section-title">Здание</h2>
             <div class="building-selector" id="building-selector"></div>
           </section>
@@ -26,6 +34,7 @@
         <canvas id="c" aria-label="Игровое поле"></canvas>
       </main>
     </div>
+    <div class="ui-toast-root" id="ui-toast-root" aria-live="polite" aria-atomic="true"></div>
     <script type="module" src="main.js"></script>
   </body>
 </html>

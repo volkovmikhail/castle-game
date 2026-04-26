@@ -56,8 +56,9 @@ export class Sprite {
    * @param {CanvasRenderingContext2D} ctx
    * @param {CanvasImageSource} tileMap
    * @param {number} [timeMs]
+   * @param {import('./state/cell.js').Cell} [cell]
    */
-  drawPostEffects(ctx, tileMap, timeMs = performance.now()) {
-    runSpritePostDraw(this, ctx, tileMap, timeMs);
+  drawPostEffects(ctx, tileMap, timeMs = performance.now(), cell) {
+    runSpritePostDraw(this, ctx, tileMap, timeMs, cell);
   }
 }

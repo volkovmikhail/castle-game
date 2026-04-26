@@ -18,6 +18,13 @@ export class StateManager {
   }
 
   /**
+   * @param {{ x: number; y: number }} param0
+   */
+  deleteCell({ x, y }) {
+    this.#state.delete(`${x}:${y}`);
+  }
+
+  /**
    * @param {{
    *   x: number;
    *   y: number;

@@ -1,5 +1,6 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
+import { PLAYER_PROFILES } from '../constants/players.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import {
   WORLD_HEIGHT_PX,
@@ -9,6 +10,10 @@ import {
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { TreesGenerator } from './generators/trees-generator.js';
+
+const MAX_BUILD_DISTANCE_CELLS = 2;
+const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
+const AXE_TOOL_KEY = 'axe';
 
 export class Game {
   /**
@@ -30,10 +35,12 @@ export class Game {
 
     /** @type {SnowOverlay | null} */
     this.snow = null;
+    this.localPlayer = PLAYER_PROFILES[Math.floor(Math.random() * PLAYER_PROFILES.length)];
   }
 
   init() {
     //TestTilesGenerator.generateAllTiles(this.stateManager);
+    this.ui.setPlayerBadge(this.localPlayer);
     this.#setupWorld();
   }
 
@@ -60,6 +67,7 @@ export class Game {
       from: { x: fromX, y: fromY },
       to: { x: toX, y: toY },
     });
+    this.#placeInitialCastles();
 
     this.snow = new SnowOverlay({
       width: rendererSize.width,
@@ -99,15 +107,79 @@ export class Game {
     const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {
-      const tileData = tiles[this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY];
-      if (this.#isInsideWorld({ x: clickedCords.tx, y: clickedCords.ty, tileData })) {
-        this.stateManager.setCell({
-          x: clickedCords.tx,
-          y: clickedCords.ty,
-          tileData,
-        });
+      const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
+
+      if (selectedBuilding === AXE_TOOL_KEY) {
+        this.#tryChopTree({ x: clickedCords.tx, y: clickedCords.ty });
+        return;
       }
+
+      const tileData = tiles[selectedBuilding];
+      const validationError = this.#validatePlacement({
+        x: clickedCords.tx,
+        y: clickedCords.ty,
+        tileData,
+      });
+
+      if (validationError) {
+        this.ui.showToast(validationError);
+        return;
+      }
+
+      this.stateManager.setCell({
+        x: clickedCords.tx,
+        y: clickedCords.ty,
+        tileData,
+        ownerUserId: this.localPlayer.userId,
+      });
     }
+  }
+
+  /**
+   * @param {{ x: number; y: number }} param0
+   */
+  #tryChopTree({ x, y }) {
+    const state = this.stateManager.getState();
+    const cell = state.get(`${x}:${y}`);
+
+    if (!cell) {
+      this.ui.showToast('Здесь нечего рубить.');
+      return;
+    }
+
+    if (!this.#isTreeSpriteType(cell.spriteType)) {
+      this.ui.showToast('Топором можно рубить только деревья.');
+      return;
+    }
+
+    this.stateManager.deleteCell({ x, y });
+  }
+
+  /**
+   * @param {{ x: number; y: number; tileData: { type: string; width: number; height: number } }} param0
+   * @returns {string | null}
+   */
+  #validatePlacement({ x, y, tileData }) {
+    if (!this.#isInsideWorld({ x, y, tileData })) {
+      return 'Нельзя строить за пределами мира.';
+    }
+
+    if (this.#hasAnyCellInArea({ x, y, tileData })) {
+      return 'Нельзя ставить здание поверх другого.';
+    }
+
+    if (!this.#hasOwnedCellInRadius({ x, y, tileData, radiusCells: MAX_BUILD_DISTANCE_CELLS })) {
+      return 'Слишком далеко от вашего дома: максимум 2 клетки.';
+    }
+
+    if (
+      this.#isHomeBuildingType(tileData.type)
+      && !this.#hasOwnedHomeInRadius({ x, y, tileData, radiusCells: HOUSE_NEIGHBOR_RADIUS_CELLS })
+    ) {
+      return 'Для дома рядом (до 3 клеток) нужен ещё один ваш дом.';
+    }
+
+    return null;
   }
 
   /**
@@ -119,5 +191,138 @@ export class Game {
     const maxY = WORLD_HEIGHT_PX - tileData.height;
 
     return x >= 0 && y >= 0 && x <= maxX && y <= maxY;
+  }
+
+  /**
+   * @param {string} spriteType
+   * @returns {boolean}
+   */
+  #isHomeBuildingType(spriteType) {
+    return spriteType === 'castle' || spriteType.startsWith('house');
+  }
+
+  /**
+   * @param {string} spriteType
+   * @returns {boolean}
+   */
+  #isTreeSpriteType(spriteType) {
+    const type = spriteType.toLowerCase();
+    return type.includes('tree') || type.includes('spruce');
+  }
+
+  /**
+   * @param {{ x: number; y: number; tileData: { width: number; height: number } }} param0
+   * @returns {boolean}
+   */
+  #hasAnyCellInArea({ x, y, tileData }) {
+    const state = this.stateManager.getState();
+    const cellsWide = tileData.width / TILE_SIZE;
+    const cellsHigh = tileData.height / TILE_SIZE;
+
+    for (let ix = 0; ix < cellsWide; ix++) {
+      for (let iy = 0; iy < cellsHigh; iy++) {
+        const checkX = x + ix * TILE_SIZE;
+        const checkY = y + iy * TILE_SIZE;
+
+        if (state.has(`${checkX}:${checkY}`)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {{ x: number; y: number; tileData: { width: number; height: number }; radiusCells: number }} param0
+   * @returns {boolean}
+   */
+  #hasOwnedCellInRadius({ x, y, tileData, radiusCells }) {
+    const target = this.#getTileRect({ x, y, tileData });
+
+    for (const [coords, cell] of this.stateManager.getState().entries()) {
+      if (cell.ownerUserId !== this.localPlayer.userId) {
+        continue;
+      }
+
+      const [cellX, cellY] = coords.split(':').map(Number);
+      const distance = this.#distanceFromRectToTile({
+        rect: target,
+        tileX: cellX / TILE_SIZE,
+        tileY: cellY / TILE_SIZE,
+      });
+
+      if (distance <= radiusCells) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {{ x: number; y: number; tileData: { width: number; height: number }; radiusCells: number }} param0
+   * @returns {boolean}
+   */
+  #hasOwnedHomeInRadius({ x, y, tileData, radiusCells }) {
+    const target = this.#getTileRect({ x, y, tileData });
+
+    for (const [coords, cell] of this.stateManager.getState().entries()) {
+      if (cell.ownerUserId !== this.localPlayer.userId || !this.#isHomeBuildingType(cell.spriteType)) {
+        continue;
+      }
+
+      const [cellX, cellY] = coords.split(':').map(Number);
+      const distance = this.#distanceFromRectToTile({
+        rect: target,
+        tileX: cellX / TILE_SIZE,
+        tileY: cellY / TILE_SIZE,
+      });
+
+      if (distance <= radiusCells) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {{ x: number; y: number; tileData: { width: number; height: number } }} param0
+   * @returns {{ minTx: number; maxTx: number; minTy: number; maxTy: number }}
+   */
+  #getTileRect({ x, y, tileData }) {
+    const minTx = x / TILE_SIZE;
+    const minTy = y / TILE_SIZE;
+    const maxTx = minTx + tileData.width / TILE_SIZE - 1;
+    const maxTy = minTy + tileData.height / TILE_SIZE - 1;
+
+    return { minTx, maxTx, minTy, maxTy };
+  }
+
+  /**
+   * @param {{
+   *   rect: { minTx: number; maxTx: number; minTy: number; maxTy: number };
+   *   tileX: number;
+   *   tileY: number;
+   * }} param0
+   * @returns {number}
+   */
+  #distanceFromRectToTile({ rect, tileX, tileY }) {
+    const dx = tileX < rect.minTx ? rect.minTx - tileX : tileX > rect.maxTx ? tileX - rect.maxTx : 0;
+    const dy = tileY < rect.minTy ? rect.minTy - tileY : tileY > rect.maxTy ? tileY - rect.maxTy : 0;
+
+    return Math.max(dx, dy);
+  }
+
+  #placeInitialCastles() {
+    for (const playerProfile of PLAYER_PROFILES) {
+      this.stateManager.setCell({
+        x: playerProfile.castleStart.x,
+        y: playerProfile.castleStart.y,
+        tileData: tiles.castle,
+        ownerUserId: playerProfile.userId,
+      });
+    }
   }
 }
