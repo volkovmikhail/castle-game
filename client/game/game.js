@@ -69,6 +69,13 @@ export class Game {
 
   render() {
     this.renderer.clear();
+    this.renderer.drawWorldBorder({
+      scrollOffset: this.controls.getScrollOffset(),
+      x: 0,
+      y: 0,
+      width: WORLD_WIDTH_PX,
+      height: WORLD_HEIGHT_PX,
+    });
 
     const buildingKey = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
     const tileData = tiles[buildingKey];
@@ -82,13 +89,6 @@ export class Game {
     });
 
     this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
-    this.renderer.drawWorldBorder({
-      scrollOffset: this.controls.getScrollOffset(),
-      x: 0,
-      y: 0,
-      width: WORLD_WIDTH_PX,
-      height: WORLD_HEIGHT_PX,
-    });
 
     this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
   }

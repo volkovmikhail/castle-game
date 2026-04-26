@@ -7,7 +7,7 @@ export const WORLD_WIDTH_PX = WORLD_WIDTH_TILES * TILE_SIZE;
 export const WORLD_HEIGHT_PX = WORLD_HEIGHT_TILES * TILE_SIZE;
 export const WORLD_OUTER_RING_TILES = 1;
 
-export const WORLD_BORDER_COLOR = '#677032';
+export const WORLD_BORDER_COLOR = '#707a3a';
 export const WORLD_BORDER_INNER_WIDTH = 1;
 export const WORLD_BORDER_OUTER_WIDTH = 2;
 
