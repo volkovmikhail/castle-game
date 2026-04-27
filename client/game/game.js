@@ -164,8 +164,12 @@ export class Game {
       return 'Нельзя строить за пределами мира.';
     }
 
-    if (this.#hasAnyCellInArea({ x, y, tileData })) {
-      return 'Нельзя ставить здание поверх другого.';
+    const blockingCell = this.#getBlockingCellInArea({ x, y, tileData });
+    if (blockingCell) {
+      if (this.#isTreeSpriteType(blockingCell.spriteType)) {
+        return 'Нельзя ставить здание поверх дерева. Сначала расчистите место.';
+      }
+      return 'Нельзя ставить здание на занятую клетку.';
     }
 
     if (!this.#hasOwnedCellInRadius({ x, y, tileData, radiusCells: MAX_BUILD_DISTANCE_CELLS })) {
@@ -214,7 +218,7 @@ export class Game {
    * @param {{ x: number; y: number; tileData: { width: number; height: number } }} param0
    * @returns {boolean}
    */
-  #hasAnyCellInArea({ x, y, tileData }) {
+  #getBlockingCellInArea({ x, y, tileData }) {
     const state = this.stateManager.getState();
     const cellsWide = tileData.width / TILE_SIZE;
     const cellsHigh = tileData.height / TILE_SIZE;
@@ -224,13 +228,14 @@ export class Game {
         const checkX = x + ix * TILE_SIZE;
         const checkY = y + iy * TILE_SIZE;
 
-        if (state.has(`${checkX}:${checkY}`)) {
-          return true;
+        const cell = state.get(`${checkX}:${checkY}`);
+        if (cell) {
+          return cell;
         }
       }
     }
 
-    return false;
+    return null;
   }
 
   /**
