@@ -9,12 +9,32 @@ import { UI } from './ui/ui.js';
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const canvasStage = document.querySelector('.canvas-stage');
 
-//Load tile map then start game init
-const tileMap = new Image();
-tileMap.src = 'assets/tilemap.png';
-tileMap.onload = main;
+/**
+ * @param {string} src
+ * @returns {Promise<HTMLImageElement>}
+ */
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = src;
+  });
+}
 
-function main() {
+Promise.all([loadImage('assets/tilemap.png'), loadImage('assets/knight.png')])
+  .then(([tileMap, knightImage]) => {
+    startGame(tileMap, knightImage);
+  })
+  .catch((err) => {
+    console.error(err);
+  });
+
+/**
+ * @param {HTMLImageElement} tileMap
+ * @param {HTMLImageElement} knightImage
+ */
+function startGame(tileMap, knightImage) {
   if (canvasStage) {
     syncCanvasSize({ canvas, stage: canvasStage });
   }
@@ -26,7 +46,7 @@ function main() {
 
   controls.init();
 
-  const game = new Game({ renderer, controls, stateManager, ui });
+  const game = new Game({ renderer, controls, stateManager, ui, knightImage });
 
   game.init();
 

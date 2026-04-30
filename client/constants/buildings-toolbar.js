@@ -1,8 +1,9 @@
 /**
- * Постройки в панели выбора: ключ в `tiles`, размер превью в UI (px спрайта).
+ * Постройки в панели выбора: ключ в `tiles`, кроме записей с `externalSprite` (превью из отдельного файла).
  */
 export const BUILDINGS_TOOLBAR = [
   { key: 'axe', spriteW: 0, spriteH: 0 },
+  { key: 'knight', spriteW: 8, spriteH: 8, externalSprite: true },
   { key: 'house', spriteW: 16, spriteH: 16 },
   { key: 'houseSide', spriteW: 16, spriteH: 16 },
   { key: 'houseDouble', spriteW: 16, spriteH: 16 },

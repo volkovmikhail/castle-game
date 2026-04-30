@@ -1,5 +1,6 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
+import { KNIGHT_SPRITE_SIZE } from '../constants/knight-atlas.js';
 import { PLAYER_PROFILES } from '../constants/players.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import {
@@ -10,12 +11,20 @@ import {
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { TreesGenerator } from './generators/trees-generator.js';
+import { KnightSystem } from './knights/knight-system.js';
 
 const MAX_BUILD_DISTANCE_CELLS = 2;
 const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
 const AXE_TOOL_KEY = 'axe';
+const KNIGHT_TOOL_KEY = 'knight';
+
+/** @type {{ width: number; height: number; type: string }} */
+const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_SIZE };
 
 export class Game {
+  /** @type {KnightSystem} */
+  #knightSystem;
+
   /**
    * Creates an instance of Game.
    *
@@ -25,17 +34,31 @@ export class Game {
    * @typedef {import('../ui/ui.js').UI} UI
    *
    * @constructor
-   * @param {{ renderer: CanvasRenderer, controls: Controls, stateManager: StateManager, ui: UI }} options
+   * @param {{
+   *   renderer: CanvasRenderer,
+   *   controls: Controls,
+   *   stateManager: StateManager,
+   *   ui: UI,
+   *   knightImage: CanvasImageSource,
+   * }} options
    */
-  constructor({ renderer, controls, stateManager, ui }) {
+  constructor({ renderer, controls, stateManager, ui, knightImage }) {
     this.renderer = renderer;
     this.controls = controls;
     this.stateManager = stateManager;
     this.ui = ui;
+    /** @type {CanvasImageSource} */
+    this.knightImage = knightImage;
 
     /** @type {SnowOverlay | null} */
     this.snow = null;
     this.localPlayer = PLAYER_PROFILES[Math.floor(Math.random() * PLAYER_PROFILES.length)];
+
+    this.#knightSystem = new KnightSystem({
+      deleteTreeAt: (x, y) => {
+        this.stateManager.deleteCell({ x, y });
+      },
+    });
   }
 
   init() {
@@ -51,6 +74,7 @@ export class Game {
 
   #setupWorld() {
     this.stateManager.clear();
+    this.#knightSystem.clear();
 
     const rendererSize = this.renderer.getRendererSize();
     this.controls.setViewportSize({ width: rendererSize.width, height: rendererSize.height });
@@ -86,7 +110,7 @@ export class Game {
     });
 
     const buildingKey = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
-    const tileData = tiles[buildingKey];
+    const tileData = buildingKey === KNIGHT_TOOL_KEY ? KNIGHT_SPAWN_FOOTPRINT : tiles[buildingKey];
     const { tx, ty } = this.controls.getSelectedCoords();
 
     this.renderer.drawSelector({
@@ -98,41 +122,86 @@ export class Game {
 
     this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
 
+    this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
+
     this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
   }
 
   update(timeStep) {
     this.snow?.update(timeStep, this.controls.getScrollOffset());
 
+    const right = this.controls.consumeRightClickWorld();
+    if (right) {
+      this.#knightSystem.issueOrder(
+        right.wx,
+        right.wy,
+        this.stateManager,
+        WORLD_WIDTH_PX,
+        WORLD_HEIGHT_PX,
+        this.localPlayer.userId,
+        (msg) => this.ui.showToast(msg)
+      );
+    }
+
     const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {
-      const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
+      const { tx, ty, shiftKey, worldPx, worldPy } = clickedCords;
 
-      if (selectedBuilding === AXE_TOOL_KEY) {
-        this.#tryChopTree({ x: clickedCords.tx, y: clickedCords.ty });
-        return;
+      if (!this.#knightSystem.trySelectAt(worldPx, worldPy, shiftKey, this.localPlayer.userId)) {
+        this.#knightSystem.clearSelection();
+
+        const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
+
+        if (selectedBuilding === AXE_TOOL_KEY) {
+          this.#tryChopTree({ x: tx, y: ty });
+        } else if (selectedBuilding === KNIGHT_TOOL_KEY) {
+          const validationError = this.#validatePlacement({
+            x: tx,
+            y: ty,
+            tileData: KNIGHT_SPAWN_FOOTPRINT,
+          });
+          if (validationError) {
+            this.ui.showToast(validationError);
+          } else {
+            const half = KNIGHT_SPRITE_SIZE / 2;
+            let spawnX = worldPx - half;
+            let spawnY = worldPy - half;
+            const minX = tx;
+            const minY = ty;
+            const maxX = tx + TILE_SIZE - KNIGHT_SPRITE_SIZE;
+            const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_SIZE;
+            spawnX = Math.max(minX, Math.min(maxX, spawnX));
+            spawnY = Math.max(minY, Math.min(maxY, spawnY));
+            this.#knightSystem.spawn({
+              x: spawnX,
+              y: spawnY,
+              ownerUserId: this.localPlayer.userId,
+            });
+          }
+        } else {
+          const tileData = tiles[selectedBuilding];
+          const validationError = this.#validatePlacement({
+            x: tx,
+            y: ty,
+            tileData,
+          });
+
+          if (validationError) {
+            this.ui.showToast(validationError);
+          } else {
+            this.stateManager.setCell({
+              x: tx,
+              y: ty,
+              tileData,
+              ownerUserId: this.localPlayer.userId,
+            });
+          }
+        }
       }
-
-      const tileData = tiles[selectedBuilding];
-      const validationError = this.#validatePlacement({
-        x: clickedCords.tx,
-        y: clickedCords.ty,
-        tileData,
-      });
-
-      if (validationError) {
-        this.ui.showToast(validationError);
-        return;
-      }
-
-      this.stateManager.setCell({
-        x: clickedCords.tx,
-        y: clickedCords.ty,
-        tileData,
-        ownerUserId: this.localPlayer.userId,
-      });
     }
+
+    this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
   }
 
   /**

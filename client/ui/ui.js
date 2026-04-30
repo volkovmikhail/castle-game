@@ -11,6 +11,9 @@ export class UI {
    * @returns {string}
    */
   static #getBuildingLabel(key) {
+    if (key === 'knight') {
+      return 'Рыцарь';
+    }
     const trimmed = key.replace(/^house/, '');
     const base = trimmed.length > 0 ? trimmed : key;
     const spaced = base.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -44,9 +47,13 @@ export class UI {
       return;
     }
 
-    for (const { key, spriteW, spriteH } of BUILDINGS_TOOLBAR) {
+    for (const entry of BUILDINGS_TOOLBAR) {
+      const { key, spriteW, spriteH } = entry;
+      /** @type {{ mapX: number; mapY: number } | undefined} */
       const tile = tiles[key];
-      if (!tile) {
+      const externalSprite = 'externalSprite' in entry && entry.externalSprite;
+
+      if (!tile && !externalSprite) {
         continue;
       }
 
@@ -61,10 +68,14 @@ export class UI {
       item.style.setProperty('--preview-pad', `${UI.#previewPadding}px`);
 
       const preview = document.createElement('div');
-      preview.className = 'building-preview';
+      preview.className = externalSprite ? 'building-preview building-preview--knight' : 'building-preview';
       preview.style.width = `${spriteW}px`;
       preview.style.height = `${spriteH}px`;
-      preview.style.backgroundPosition = `-${tile.mapX}px -${tile.mapY}px`;
+      if (tile) {
+        preview.style.backgroundPosition = `-${tile.mapX}px -${tile.mapY}px`;
+      } else {
+        preview.style.backgroundPosition = '0 -16px';
+      }
 
       const label = document.createElement('span');
       label.className = 'building-label';

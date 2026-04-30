@@ -2,6 +2,7 @@ import { Random } from '../../common/random.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
 import { tiles } from '../../constants/tiles.js';
 import { Tree } from '../entities/tree.js';
+import { isInsideCastleNoTreeMargin } from './castle-tree-margins.js';
 
 export class TreesGenerator {
   static #generatedTreeTypes = {
@@ -23,6 +24,10 @@ export class TreesGenerator {
   static generateTrees(stateManager, { from, to }) {
     for (let x = from.x; x <= to.x; x += TILE_SIZE) {
       for (let y = from.y; y <= to.y; y += TILE_SIZE) {
+        if (isInsideCastleNoTreeMargin(x, y)) {
+          continue;
+        }
+
         const randomTreeType = this.#getRandomTreeType();
 
         const treeEntity = new Tree({ treeType: randomTreeType });

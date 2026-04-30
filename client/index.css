@@ -133,6 +133,10 @@ body {
   image-rendering: crisp-edges;
 }
 
+.building-preview--knight {
+  background-image: url('assets/knight.png');
+}
+
 .building-selector-item {
   box-sizing: border-box;
   width: 100%;

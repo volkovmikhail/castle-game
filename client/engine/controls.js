@@ -30,6 +30,8 @@ export class Controls {
   #clickedStateCoords = null;
 
   #isMouseDown = false;
+  /** @type {boolean} */
+  #isPanning = false;
   #startX;
   #startY;
 
@@ -41,12 +43,26 @@ export class Controls {
   #viewportWidth = 0;
   #viewportHeight = 0;
 
+  /**
+   * @type {{ wx: number; wy: number } | null}
+   */
+  #pendingRightWorld = null;
+
+  /**
+   * @type {boolean}
+   */
+  #lastLeftClickShift = false;
+
   init() {
     this.setViewportSize({ width: this.canvas.width, height: this.canvas.height });
 
+    this.canvas.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
+
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.#calculateSelectorCoords(event);
-      if (this.#isMouseDown) {
+      if (this.#isPanning) {
         const offset = this.#calculateOffset(event);
 
         this.#setScrollOffset(offset);
@@ -56,6 +72,10 @@ export class Controls {
     });
 
     this.canvas.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
       const { x, y } = this.#calculateCanvasRelativeCoords(event);
 
       this.#canvasStartX = x - this.#scrollOffsetX;
@@ -64,17 +84,36 @@ export class Controls {
       this.#startX = event.clientX;
       this.#startY = event.clientY;
       this.#isMouseDown = true;
+      this.#isPanning = true;
     });
 
     this.canvas.addEventListener('mouseup', (event) => {
-      this.#isMouseDown = false;
+      if (event.button === 2) {
+        const { x, y } = this.#calculateCanvasRelativeCoords(event);
+        this.#pendingRightWorld = {
+          wx: x - this.#scrollOffsetX,
+          wy: y - this.#scrollOffsetY,
+        };
+      }
+      if (event.button === 0) {
+        this.#isMouseDown = false;
+        this.#isPanning = false;
+      }
     });
 
     this.canvas.addEventListener('click', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
       const cords = this.#calculateClickedStateCoords(event);
+      const { x, y } = this.#calculateCanvasRelativeCoords(event);
+      const worldPx = x - this.#scrollOffsetX;
+      const worldPy = y - this.#scrollOffsetY;
 
       if (this.#isClick(event)) {
-        this.#setClickedCoords(cords);
+        this.#lastLeftClickShift = event.shiftKey;
+        this.#setClickedCoords({ ...cords, worldPx, worldPy });
       }
     });
   }
@@ -145,12 +184,13 @@ export class Controls {
 
       if (Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) {
         return true;
-      } else {
-        event.stopImmediatePropagation();
-
-        return false;
       }
+      event.stopImmediatePropagation();
+
+      return false;
     }
+
+    return false;
   }
 
   #setScrollOffset({ offsetX, offsetY }) {
@@ -185,18 +225,32 @@ export class Controls {
   /**
    * returns game (state) related coords
    *
-   * @returns {{ tx: number; ty: number; }}
+   * @returns {{ tx: number; ty: number; shiftKey: boolean; worldPx: number; worldPy: number } | null}
    */
   getClickedCoords() {
     if (this.#clickedStateCoords === null) {
       return null;
     }
 
-    const cords = { ...this.#clickedStateCoords };
+    const cords = {
+      ...this.#clickedStateCoords,
+      shiftKey: this.#lastLeftClickShift,
+    };
 
     this.#clickedStateCoords = null;
 
     return cords;
+  }
+
+  /**
+   * ПКМ в координатах мира (центр клика), для приказов юнитам.
+   *
+   * @returns {{ wx: number; wy: number } | null}
+   */
+  consumeRightClickWorld() {
+    const p = this.#pendingRightWorld;
+    this.#pendingRightWorld = null;
+    return p;
   }
 
   /**
