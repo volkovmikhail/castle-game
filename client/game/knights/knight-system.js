@@ -3,7 +3,7 @@ import {
   hasStraightWalk,
   isTreeSpriteType,
   isWalkableTile,
-  neighborStandTilesForTree,
+  neighborStandTiles8ForTree,
 } from '../../common/grid-path.js';
 import {
   KNIGHT_CHOP_FRAME_MS,
@@ -19,6 +19,32 @@ import { TILE_SIZE } from '../../constants/sizes.js';
 const MOVE_SPEED_PX_PER_MS = 0.05;
 const CHOP_HIT_INTERVAL_MS = 550;
 const ARRIVE_EPS_PX = 2.5;
+// Микро-сдвиги от коллизий в толпе не считаем "реальным движением".
+const STALL_MOVE_EPS_PX = 0.28;
+const STALL_IDLE_AFTER_MS = 110;
+/**
+ * Макс. зазор между хитбоксом рыцаря и тайлом дерева для удара (пиксели).
+ * Центр соседнего тайла даёт ~4px зазор до AABB дерева — 3px было мало и рыцари «замирали» перед деревом.
+ */
+const CHOP_TOUCH_GAP_PX = 1;
+
+/**
+ * Минимальное расстояние между двумя осями-выровненными прямоугольниками (0 при касании/пересечении).
+ *
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} aw
+ * @param {number} ah
+ * @param {number} bx
+ * @param {number} by
+ * @param {number} bw
+ * @param {number} bh
+ */
+function aabbOuterDistance(ax, ay, aw, ah, bx, by, bw, bh) {
+  const dx = Math.max(0, Math.max(bx - (ax + aw), ax - (bx + bw)));
+  const dy = Math.max(0, Math.max(by - (ay + ah), ay - (by + bh)));
+  return Math.hypot(dx, dy);
+}
 
 /** @typedef {'idle' | 'move' | 'chop'} KnightMode */
 
@@ -59,6 +85,12 @@ class KnightUnit {
 
     /** Зеркалирование спрайта: true — смотрит влево (идёт или рубит слева от цели). */
     this.faceLeft = false;
+
+    /** Позиция в конце предыдущего апдейта (для детекта «бега на месте»). */
+    this.lastFrameX = x;
+    this.lastFrameY = y;
+    /** Накопленное время почти без смещения в режиме move. */
+    this.stalledMoveMs = 0;
   }
 
   /** @returns {{ x: number; y: number }} */
@@ -238,7 +270,7 @@ export class KnightSystem {
    * @param {(msg: string) => void} showToast
    */
   #orderChopGroup(units, treeTile, state, worldWidthPx, worldHeightPx, showToast) {
-    const neighbors = neighborStandTilesForTree(treeTile.x, treeTile.y).filter((t) =>
+    const neighbors = neighborStandTiles8ForTree(treeTile.x, treeTile.y).filter((t) =>
       isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
     );
 
@@ -247,10 +279,6 @@ export class KnightSystem {
       return;
     }
 
-    /** @type {Set<string>} */
-    const reserved = new Set();
-
-    let anyOk = false;
     for (const u of units) {
       const sorted = [...neighbors].sort((a, b) => {
         const da = (a.x + TILE_SIZE / 2 - u.center().x) ** 2 + (a.y + TILE_SIZE / 2 - u.center().y) ** 2;
@@ -260,36 +288,118 @@ export class KnightSystem {
 
       let picked = null;
       for (const n of sorted) {
-        const rk = `${n.x}:${n.y}`;
-        if (reserved.has(rk)) {
-          continue;
-        }
         const path = findPathTiles(state, u.center(), { x: n.x, y: n.y }, worldWidthPx, worldHeightPx);
         if (path !== null) {
           picked = { n, path };
-          reserved.add(rk);
           break;
         }
       }
 
+      u.chopTreeTile = { x: treeTile.x, y: treeTile.y };
+      u.mode = 'move';
+      u.chopCooldownMs = 0;
+      u.walkAnimStartMs = performance.now();
+
       if (picked) {
         u.path = picked.path;
-        u.mode = 'move';
-        u.chopTreeTile = { x: treeTile.x, y: treeTile.y };
-        u.chopCooldownMs = 0;
-        u.walkAnimStartMs = performance.now();
-        u.pixelGoal = this.#clampTopLeftToWorld(
-          picked.n.x + TILE_SIZE / 2 - KNIGHT_SPRITE_SIZE / 2,
-          picked.n.y + TILE_SIZE / 2 - KNIGHT_SPRITE_SIZE / 2,
+        u.pixelGoal = this.#chopApproachPixelGoalTopLeft(
+          treeTile.x,
+          treeTile.y,
+          picked.n.x,
+          picked.n.y,
           worldWidthPx,
           worldHeightPx
         );
-        anyOk = true;
+      } else {
+        u.path = [];
+        u.pixelGoal = null;
       }
     }
+  }
 
-    if (!anyOk) {
-      showToast('Нельзя дойти до дерева.');
+  /**
+   * Левый верх спрайта у грани с деревом с выбранной соседней клетки (ближе к удару, чем центр тайла).
+   *
+   * @param {number} treeTx
+   * @param {number} treeTy
+   * @param {number} nx
+   * @param {number} ny
+   * @param {number} worldW
+   * @param {number} worldH
+   */
+  #chopApproachPixelGoalTopLeft(treeTx, treeTy, nx, ny, worldW, worldH) {
+    const T = TILE_SIZE;
+    const K = KNIGHT_SPRITE_SIZE;
+    const ox = nx - treeTx;
+    const oy = ny - treeTy;
+    let x;
+    let y;
+    if (ox === -T && oy === 0) {
+      x = treeTx - K;
+      y = treeTy + (T - K) / 2;
+    } else if (ox === T && oy === 0) {
+      x = treeTx + T;
+      y = treeTy + (T - K) / 2;
+    } else if (ox === 0 && oy === -T) {
+      x = treeTx + (T - K) / 2;
+      y = treeTy - K;
+    } else if (ox === 0 && oy === T) {
+      x = treeTx + (T - K) / 2;
+      y = treeTy + T;
+    } else if (ox === -T && oy === -T) {
+      x = treeTx - K;
+      y = treeTy - K;
+    } else if (ox === T && oy === -T) {
+      x = treeTx + T - K;
+      y = treeTy - K;
+    } else if (ox === -T && oy === T) {
+      x = treeTx - K;
+      y = treeTy + T - K;
+    } else if (ox === T && oy === T) {
+      x = treeTx + T - K;
+      y = treeTy + T - K;
+    } else {
+      x = nx + (T - K) / 2;
+      y = ny + (T - K) / 2;
+    }
+    return this.#clampTopLeftToWorld(x, y, worldW, worldH);
+  }
+
+  /**
+   * Малый шаг к ближайшей точке на AABB дерева, только по проходимым клеткам.
+   *
+   * @param {KnightUnit} u
+   * @param {{ x: number; y: number }} tree
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} dtMs
+   * @param {number} worldW
+   * @param {number} worldH
+   */
+  #seekTowardChopTree(u, tree, state, dtMs, worldW, worldH) {
+    const t = tree;
+    const K = KNIGHT_SPRITE_SIZE;
+    const cx = u.x + K / 2;
+    const cy = u.y + K / 2;
+    const px = Math.max(t.x, Math.min(cx, t.x + TILE_SIZE));
+    const py = Math.max(t.y, Math.min(cy, t.y + TILE_SIZE));
+    let dx = px - cx;
+    let dy = py - cy;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.05) {
+      return;
+    }
+    dx /= len;
+    dy /= len;
+    const step = MOVE_SPEED_PX_PER_MS * dtMs * 2.25;
+    const ncx = cx + dx * step;
+    const ncy = cy + dy * step;
+    const ntx = this.#clampTopLeftToWorld(ncx - K / 2, ncy - K / 2, worldW, worldH);
+    if (this.#isKnightWalkable(state, ntx.x, ntx.y, worldW, worldH)) {
+      u.x = ntx.x;
+      u.y = ntx.y;
+      if (u.walkAnimStartMs == null) {
+        u.walkAnimStartMs = performance.now();
+      }
     }
   }
 
@@ -318,13 +428,11 @@ export class KnightSystem {
           continue;
         }
 
-        if (!this.#isFourNeighborTile(u, u.chopTreeTile.x, u.chopTreeTile.y)) {
-          u.mode = 'idle';
-          u.chopTreeTile = null;
+        if (!this.#isKnightTouchingTreeAabb(u, u.chopTreeTile.x, u.chopTreeTile.y)) {
+          u.mode = 'move';
           u.path = [];
           u.pixelGoal = null;
-          u.walkAnimStartMs = null;
-          u.faceLeft = false;
+          u.walkAnimStartMs = performance.now();
           continue;
         }
 
@@ -339,6 +447,24 @@ export class KnightSystem {
           y: u.chopTreeTile.y + TILE_SIZE / 2,
         });
         continue;
+      }
+
+      if (u.mode === 'move' && u.chopTreeTile) {
+        const t = u.chopTreeTile;
+        const cell = state.get(`${t.x}:${t.y}`);
+        if (
+          cell &&
+          cell.isRenderable &&
+          isTreeSpriteType(cell.spriteType) &&
+          this.#isKnightTouchingTreeAabb(u, t.x, t.y)
+        ) {
+          u.path = [];
+          u.pixelGoal = null;
+          u.mode = 'chop';
+          u.chopCooldownMs = 0;
+          u.walkAnimStartMs = null;
+          continue;
+        }
       }
 
       if (u.mode === 'move' && u.pixelGoal != null) {
@@ -374,7 +500,7 @@ export class KnightSystem {
       if (u.path.length === 0 && u.mode === 'move' && u.chopTreeTile && !u.pixelGoal) {
         const t = u.chopTreeTile;
         const cell = state.get(`${t.x}:${t.y}`);
-        if (cell && cell.isRenderable && isTreeSpriteType(cell.spriteType) && this.#isFourNeighborTile(u, t.x, t.y)) {
+        if (cell && cell.isRenderable && isTreeSpriteType(cell.spriteType) && this.#isKnightTouchingTreeAabb(u, t.x, t.y)) {
           u.mode = 'chop';
           u.chopCooldownMs = 0;
           u.walkAnimStartMs = null;
@@ -384,10 +510,7 @@ export class KnightSystem {
           u.walkAnimStartMs = null;
           u.faceLeft = false;
         } else {
-          u.chopTreeTile = null;
-          u.mode = 'idle';
-          u.walkAnimStartMs = null;
-          u.faceLeft = false;
+          this.#seekTowardChopTree(u, t, state, dtMs, worldWidthPx, worldHeightPx);
         }
         continue;
       }
@@ -400,6 +523,32 @@ export class KnightSystem {
     }
 
     this.#resolveKnightOverlaps(state, worldWidthPx, worldHeightPx);
+
+    for (const u of this.#units) {
+      const moved = Math.hypot(u.x - u.lastFrameX, u.y - u.lastFrameY);
+
+      if (u.mode === 'move') {
+        if (moved <= STALL_MOVE_EPS_PX) {
+          u.stalledMoveMs += dtMs;
+          if (u.stalledMoveMs >= STALL_IDLE_AFTER_MS) {
+            // Остаёмся в режиме move (чтобы команда не терялась), но анимацию гасим в idle.
+            u.walkAnimStartMs = null;
+          }
+        } else {
+          u.stalledMoveMs = 0;
+          // Возвращаем бег только при заметном выходе из "затыка",
+          // чтобы убрать мерцание run/idle при мелких толчках.
+          if (u.walkAnimStartMs == null && moved > STALL_MOVE_EPS_PX * 2.2) {
+            u.walkAnimStartMs = performance.now();
+          }
+        }
+      } else {
+        u.stalledMoveMs = 0;
+      }
+
+      u.lastFrameX = u.x;
+      u.lastFrameY = u.y;
+    }
   }
 
   /**
@@ -648,15 +797,24 @@ export class KnightSystem {
   }
 
   /**
+   * Рыцарь вплотную к клетке дерева: по хитбоксу, без привязки к сетке направлений.
+   *
    * @param {KnightUnit} u
-   * @param {number} tx
-   * @param {number} ty
+   * @param {number} treeTx левый верх тайла дерева
+   * @param {number} treeTy
    */
-  #isFourNeighborTile(u, tx, ty) {
-    const { tx: ktx, ty: kty } = u.anchorTileOrigin();
-    const dx = Math.abs(ktx - tx);
-    const dy = Math.abs(kty - ty);
-    return (dx === TILE_SIZE && dy === 0) || (dx === 0 && dy === TILE_SIZE);
+  #isKnightTouchingTreeAabb(u, treeTx, treeTy) {
+    const d = aabbOuterDistance(
+      u.x,
+      u.y,
+      KNIGHT_SPRITE_SIZE,
+      KNIGHT_SPRITE_SIZE,
+      treeTx,
+      treeTy,
+      TILE_SIZE,
+      TILE_SIZE
+    );
+    return d <= CHOP_TOUCH_GAP_PX;
   }
 
   /**

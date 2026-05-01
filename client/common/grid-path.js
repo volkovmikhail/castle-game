@@ -242,3 +242,24 @@ export function neighborStandTilesForTree(treePx, treePy) {
     { x: treePx, y: treePy + TILE_SIZE },
   ];
 }
+
+/**
+ * Восемь соседних клеток (левый верх тайла) вокруг клетки дерева — ортогональ + диагональ.
+ *
+ * @param {number} treePx
+ * @param {number} treePy
+ * @returns {{ x: number; y: number }[]}
+ */
+export function neighborStandTiles8ForTree(treePx, treePy) {
+  /** @type {{ x: number; y: number }[]} */
+  const out = [];
+  for (let ix = -1; ix <= 1; ix++) {
+    for (let iy = -1; iy <= 1; iy++) {
+      if (ix === 0 && iy === 0) {
+        continue;
+      }
+      out.push({ x: treePx + ix * TILE_SIZE, y: treePy + iy * TILE_SIZE });
+    }
+  }
+  return out;
+}

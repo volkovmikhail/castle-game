@@ -199,7 +199,7 @@ export function add(a, b) {
   ЛКМ **без Shift** — перетаскивание панорамирует камеру (как раньше). ЛКМ **с Shift** — перетаскивание задаёт рамку выделения в мире: `getMarqueeDraftWorldRect()` для превью в `Game.render`, `consumeMarqueeSelectionWorldRect()` в `Game.update` отдаёт итоговый прямоугольник после отпускания кнопки (порог ~4px в мире, чтобы отличить от клика).
 
 - `client/common/grid-path.js`  
-  Общие функции навигации по сетке: проверка проходимости тайлов, A* (`findPathTiles`), проверка прямой видимости/проходимости (`hasStraightWalk`), утилиты для работы с деревьями (`isTreeSpriteType`, `neighborStandTilesForTree`).
+  Общие функции навигации по сетке: проверка проходимости тайлов, A* (`findPathTiles`), проверка прямой видимости/проходимости (`hasStraightWalk`), утилиты для работы с деревьями (`isTreeSpriteType`, `neighborStandTilesForTree`, `neighborStandTiles8ForTree`).
 
 - `client/constants/knight-atlas.js`  
   Константы визуала рыцаря: размер спрайта, набор кадров для бега/рубки/покоя, тайминги анимации и радиус коллизии между рыцарями (`KNIGHT_COLLISION_RADIUS`).
