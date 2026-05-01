@@ -52,7 +52,7 @@ export class Game {
 
     /** @type {SnowOverlay | null} */
     this.snow = null;
-    this.localPlayer = PLAYER_PROFILES[Math.floor(Math.random() * PLAYER_PROFILES.length)];
+    this.localPlayer = PLAYER_PROFILES[0];
 
     this.#knightSystem = new KnightSystem({
       deleteTreeAt: (x, y) => {

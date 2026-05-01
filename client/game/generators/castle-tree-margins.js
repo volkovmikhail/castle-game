@@ -2,7 +2,7 @@ import { PLAYER_PROFILES } from '../../constants/players.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
 import { tiles } from '../../constants/tiles.js';
 
-const MARGIN_TILES = 2;
+const MARGIN_TILES = 1;
 
 /** @type {{ minX: number; maxX: number; minY: number; maxY: number }[] | null} */
 let cachedMargins = null;
