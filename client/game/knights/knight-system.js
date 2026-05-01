@@ -149,6 +149,33 @@ export class KnightSystem {
   }
 
   /**
+   * Выделить всех своих рыцарей, чей хитбокс пересекает прямоугольник в мировых пикселях (min/max по осям).
+   *
+   * @param {number} wx0
+   * @param {number} wy0
+   * @param {number} wx1
+   * @param {number} wy1
+   * @param {string} localOwnerId
+   */
+  selectUnitsInWorldRect(wx0, wy0, wx1, wy1, localOwnerId) {
+    const minX = Math.min(wx0, wx1);
+    const minY = Math.min(wy0, wy1);
+    const maxX = Math.max(wx0, wx1);
+    const maxY = Math.max(wy0, wy1);
+    this.#selectedIds.clear();
+    const w = KNIGHT_SPRITE_SIZE;
+    for (const u of this.#units) {
+      if (u.ownerUserId !== localOwnerId) {
+        continue;
+      }
+      const overlaps = u.x < maxX && u.x + w > minX && u.y < maxY && u.y + w > minY;
+      if (overlaps) {
+        this.#selectedIds.add(u.id);
+      }
+    }
+  }
+
+  /**
    * @param {number} worldPx
    * @param {number} worldPy
    * @param {import('../../engine/state/state-manager.js').StateManager} stateManager

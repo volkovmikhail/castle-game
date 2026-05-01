@@ -124,6 +124,22 @@ export class Game {
 
     this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
 
+    const marqueeDraft = this.controls.getMarqueeDraftWorldRect();
+    if (marqueeDraft) {
+      const ctx = this.renderer.ctx;
+      const { offsetX, offsetY } = this.controls.getScrollOffset();
+      const rx = Math.round(marqueeDraft.minX + offsetX);
+      const ry = Math.round(marqueeDraft.minY + offsetY);
+      const rw = Math.max(1, Math.round(marqueeDraft.maxX - marqueeDraft.minX));
+      const rh = Math.max(1, Math.round(marqueeDraft.maxY - marqueeDraft.minY));
+      ctx.save();
+      ctx.strokeStyle = 'rgb(120, 220, 255)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.restore();
+    }
+
     this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
   }
 
@@ -140,6 +156,17 @@ export class Game {
         WORLD_HEIGHT_PX,
         this.localPlayer.userId,
         (msg) => this.ui.showToast(msg)
+      );
+    }
+
+    const marqueeRect = this.controls.consumeMarqueeSelectionWorldRect();
+    if (marqueeRect !== null) {
+      this.#knightSystem.selectUnitsInWorldRect(
+        marqueeRect.minX,
+        marqueeRect.minY,
+        marqueeRect.maxX,
+        marqueeRect.maxY,
+        this.localPlayer.userId
       );
     }
 

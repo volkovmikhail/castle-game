@@ -32,11 +32,22 @@ export class Controls {
   #isMouseDown = false;
   /** @type {boolean} */
   #isPanning = false;
+  /** Shift зажат в момент ЛКМ — перетаскивание = рамка выделения; без Shift = панорама камеры. */
+  #dragStartedWithShift = false;
   #startX;
   #startY;
 
   #canvasStartX;
   #canvasStartY;
+
+  /** @type {{ wx: number; wy: number } | null} */
+  #marqueeWorldStart = null;
+  /** @type {{ wx: number; wy: number } | null} */
+  #marqueeWorldCurrent = null;
+  #marqueeExceededThreshold = false;
+  /** @type {{ minX: number; minY: number; maxX: number; maxY: number } | null} */
+  #pendingMarquee = null;
+  #suppressNextClick = false;
 
   #scrollOffsetX = 0;
   #scrollOffsetY = 0;
@@ -62,10 +73,22 @@ export class Controls {
 
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.#calculateSelectorCoords(event);
-      if (this.#isPanning) {
+      if (this.#isPanning && !this.#dragStartedWithShift) {
         const offset = this.#calculateOffset(event);
 
         this.#setScrollOffset(offset);
+      }
+
+      if (this.#isMouseDown && this.#dragStartedWithShift && this.#marqueeWorldStart) {
+        const { x, y } = this.#calculateCanvasRelativeCoords(event);
+        const wx = x - this.#scrollOffsetX;
+        const wy = y - this.#scrollOffsetY;
+        this.#marqueeWorldCurrent = { wx, wy };
+        const dx = wx - this.#marqueeWorldStart.wx;
+        const dy = wy - this.#marqueeWorldStart.wy;
+        if (Math.hypot(dx, dy) >= 4) {
+          this.#marqueeExceededThreshold = true;
+        }
       }
 
       this.#setSelectedCoords(cords);
@@ -84,7 +107,20 @@ export class Controls {
       this.#startX = event.clientX;
       this.#startY = event.clientY;
       this.#isMouseDown = true;
-      this.#isPanning = true;
+      this.#dragStartedWithShift = event.shiftKey;
+      if (event.shiftKey) {
+        this.#isPanning = false;
+        const wx = x - this.#scrollOffsetX;
+        const wy = y - this.#scrollOffsetY;
+        this.#marqueeWorldStart = { wx, wy };
+        this.#marqueeWorldCurrent = { wx, wy };
+        this.#marqueeExceededThreshold = false;
+      } else {
+        this.#isPanning = true;
+        this.#marqueeWorldStart = null;
+        this.#marqueeWorldCurrent = null;
+        this.#marqueeExceededThreshold = false;
+      }
     });
 
     this.canvas.addEventListener('mouseup', (event) => {
@@ -96,6 +132,20 @@ export class Controls {
         };
       }
       if (event.button === 0) {
+        if (this.#dragStartedWithShift && this.#marqueeExceededThreshold && this.#marqueeWorldStart && this.#marqueeWorldCurrent) {
+          const a = this.#marqueeWorldStart;
+          const b = this.#marqueeWorldCurrent;
+          this.#pendingMarquee = {
+            minX: Math.min(a.wx, b.wx),
+            minY: Math.min(a.wy, b.wy),
+            maxX: Math.max(a.wx, b.wx),
+            maxY: Math.max(a.wy, b.wy),
+          };
+          this.#suppressNextClick = true;
+        }
+        this.#marqueeWorldStart = null;
+        this.#marqueeWorldCurrent = null;
+        this.#marqueeExceededThreshold = false;
         this.#isMouseDown = false;
         this.#isPanning = false;
       }
@@ -103,6 +153,11 @@ export class Controls {
 
     this.canvas.addEventListener('click', (event) => {
       if (event.button !== 0) {
+        return;
+      }
+
+      if (this.#suppressNextClick) {
+        this.#suppressNextClick = false;
         return;
       }
 
@@ -251,6 +306,39 @@ export class Controls {
     const p = this.#pendingRightWorld;
     this.#pendingRightWorld = null;
     return p;
+  }
+
+  /**
+   * Рамка выделения в мировых пикселях (для отрисовки), пока тянут ЛКМ с зажатым Shift.
+   *
+   * @returns {{ minX: number; minY: number; maxX: number; maxY: number } | null}
+   */
+  getMarqueeDraftWorldRect() {
+    if (!this.#isMouseDown || !this.#dragStartedWithShift || !this.#marqueeExceededThreshold) {
+      return null;
+    }
+    if (!this.#marqueeWorldStart || !this.#marqueeWorldCurrent) {
+      return null;
+    }
+    const a = this.#marqueeWorldStart;
+    const b = this.#marqueeWorldCurrent;
+    return {
+      minX: Math.min(a.wx, b.wx),
+      minY: Math.min(a.wy, b.wy),
+      maxX: Math.max(a.wx, b.wx),
+      maxY: Math.max(a.wy, b.wy),
+    };
+  }
+
+  /**
+   * Один раз за завершённый жест «рамка с Shift»; затем сбрасывается в null.
+   *
+   * @returns {{ minX: number; minY: number; maxX: number; maxY: number } | null}
+   */
+  consumeMarqueeSelectionWorldRect() {
+    const r = this.#pendingMarquee;
+    this.#pendingMarquee = null;
+    return r;
   }
 
   /**
