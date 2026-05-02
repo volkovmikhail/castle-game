@@ -24,6 +24,24 @@
           </section>
 
           <section class="sidebar__section">
+            <h2 class="sidebar__section-title">Ресурсы</h2>
+            <ul class="resource-list" aria-label="Ресурсы игрока">
+              <li class="resource-row">
+                <span class="resource-row__name">Пшеница</span>
+                <span class="resource-row__value" id="resource-wheat">0</span>
+              </li>
+              <li class="resource-row">
+                <span class="resource-row__name">Дерево</span>
+                <span class="resource-row__value" id="resource-wood">0</span>
+              </li>
+              <li class="resource-row">
+                <span class="resource-row__name">Золото</span>
+                <span class="resource-row__value" id="resource-gold">0</span>
+              </li>
+            </ul>
+          </section>
+
+          <section class="sidebar__section">
             <h2 class="sidebar__section-title">Здание</h2>
             <div class="building-selector" id="building-selector"></div>
           </section>
@@ -35,6 +53,73 @@
       </main>
     </div>
     <div class="ui-toast-root" id="ui-toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="market-shop-modal" class="market-modal" hidden aria-hidden="true">
+      <div class="market-modal__backdrop" data-market-shop-close tabindex="-1"></div>
+      <div
+        class="market-modal__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-shop-title"
+        tabindex="-1"
+      >
+        <h2 id="market-shop-title" class="market-modal__title">Магазин</h2>
+        <p class="market-modal__lead">Выберите обмен и количество.</p>
+
+        <fieldset class="market-modal__types">
+          <legend class="market-modal__legend">Направление обмена</legend>
+          <label class="market-modal__radio">
+            <input type="radio" name="market-exchange" value="wheatToGold" checked />
+            <span>Пшеница → золото</span>
+          </label>
+          <label class="market-modal__radio">
+            <input type="radio" name="market-exchange" value="woodToGold" />
+            <span>Дерево → золото</span>
+          </label>
+          <label class="market-modal__radio">
+            <input type="radio" name="market-exchange" value="goldToWood" />
+            <span>Золото → дерево</span>
+          </label>
+          <label class="market-modal__radio">
+            <input type="radio" name="market-exchange" value="goldToWheat" />
+            <span>Золото → пшеница</span>
+          </label>
+        </fieldset>
+
+        <div class="market-modal__qty-block">
+          <span class="market-modal__qty-label" id="market-shop-qty-caption">Количество (отдаёте)</span>
+          <div class="market-modal__qty-row">
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-minus" aria-label="Минус 10">
+              −10
+            </button>
+            <input
+              type="number"
+              id="market-shop-qty"
+              class="market-modal__qty-input"
+              min="0"
+              step="1"
+              value="10"
+              inputmode="numeric"
+            />
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-plus" aria-label="Плюс 10">
+              +10
+            </button>
+          </div>
+        </div>
+
+        <p class="market-modal__preview" id="market-shop-preview"></p>
+
+        <div class="market-modal__actions">
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="market-shop-confirm">
+            Обменять
+          </button>
+          <button type="button" class="market-modal__btn" id="market-shop-close" data-market-shop-close>
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="main.js"></script>
   </body>
 </html>

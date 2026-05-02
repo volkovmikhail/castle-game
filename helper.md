@@ -206,3 +206,68 @@ export function add(a, b) {
 
 - Сущность `KnightUnit` (внутри `knight-system.js`)  
   Модель одного рыцаря: мировая позиция, режим, текущий маршрут, пиксельная цель, цель рубки, анимационные таймеры и направление отображения (`faceLeft`).
+
+---
+
+## Игровой контент
+
+Экономика (три ресурса), постройки и найм с панели, ферма со стадиями роста и сбором урожая, магазин с постройкой и обменом валют, рыцари и доход дерева за рубку, периодическая регенерация леса вплотную к существующим деревьям.
+
+### Ресурсы игрока
+
+- Тип `PlayerResources`: **пшеница**, **дерево**, **золото** (`client/constants/resources.js`).
+- Стартовые значения задаются в `STARTING_PLAYER_RESOURCES`; при каждой пересборке мира (`Game.#setupWorld`) для каждого профиля из `PLAYER_PROFILES` создаётся копия через `cloneStartingResources()`.
+- UI ресурсов обновляется через `UI.setResources()` (локальный игрок).
+
+### Экономика построек и найма
+
+- Файл `client/constants/economy.js`: таблица `PLACEMENT_COSTS` по ключу инструмента из панели (`farmStage1`, `market`, `knight`).
+- Вспомогательные функции: `canAfford`, `subtractResources`, `getNumericCost`, `formatCostLineForTool`.
+- У записи магазина флаг **`uniquePerPlayer`**: у одного игрока не может быть двух магазинов (проверка в `Game.#tryUniquePlacementRule` и `#playerHasAnyMarket`).
+- Рыцарь в панели — псевдо-ключ `KNIGHT_TOOL_KEY` (`'knight'`): для спрайта используется отдельная текстура, не тайл из `tiles.js`.
+
+### Панель построек
+
+- `client/constants/buildings-toolbar.js` — список кнопок: ферма (`farmStage1`, превью `farmStage4`), магазин (`market`), рыцарь (`externalSprite`).
+- Размещение зданий и найм рыцаря обрабатываются в `Game.update` по клику ЛКМ (не Shift).
+
+### Правила размещения (`Game.#validatePlacement`)
+
+- Только внутри прямоугольника мира (`WORLD_WIDTH_PX` / `WORLD_HEIGHT_PX` из `client/constants/world.js`).
+- Нельзя ставить поверх занятой клетки; деревья нужно сначала срубить (сообщение про расчистку).
+- Любая постройка должна быть в радиусе **не более 2 клеток** (Chebyshev) от **любой своей** клетки игрока (`MAX_BUILD_DISTANCE_CELLS`) — «привязка» к своей территории.
+- Для типов «дом» (`castle`, `house*`, `farmStage*`, `houseFarm`) дополнительно: в радиусе **3 клеток** должен быть **ещё один** ваш дом (`HOUSE_NEIGHBOR_RADIUS_CELLS`) — чтобы новые дома не ставились в отрыве от сети поселений.
+
+### Ферма
+
+- Ставится как `farmStage1`; стоимость в `PLACEMENT_COSTS`.
+- Рост: очередь задач `#progressJobs`, вид `farm`. Каждые `FARM_GROWTH_STAGE_MS` (см. `client/constants/buildings-progress.js`) спрайт меняется по цепочке `FARM_GROWTH_STAGES` до `farmStage4`.
+- Сбор: клик по **своей** созревшей ферме (`farmStage4`) начисляет `WHEAT_PER_FARM_HARVEST` пшеницы и сбрасывает поле в `farmStage1` с новым циклом роста.
+
+### Магазин
+
+- При выборе «Магазин» на землю ставится **`marketStage1`**; идёт таймер постройки (`MARKET_CONSTRUCTION_TOTAL_MS`, два этапа спрайта → готовый `market`).
+- Пока стройка не завершена, клик по стадиям показывает тост «ещё строится».
+- Готовый магазин **своего** игрока открывает модалку `UI.openMarketShop`: обмен пшеницы/дерева на золото и золота на пшеница/дерево по курсам из `client/constants/shop-exchange.js` (`SHOP_*`, предпросмотр строк — `getShopExchangePreviewLine`).
+- Чужой магазин — тост «не ваш».
+
+### Рыцари и дерево
+
+- За срубленное дерево владелец рыцаря получает **`WOOD_PER_KNIGHT_TREE_CHOP`** дерева (`resources.js`); начисление в колбэке `deleteTreeAt`, переданном в `KnightSystem` из `Game`.
+
+### Перерост леса (регенерация деревьев)
+
+- Константы: `client/constants/forest-regrowth.js` — интервал `TREE_REGROW_INTERVAL_MS` (15 с между попытками), буфер от зданий `TREE_REGROW_BUILDING_BUFFER_TILES` (1 тайл по Чебышёву до любой клетки **не-дерева** в `state`).
+- Логика: `client/game/forest-regrowth.js`, функция `tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx)`.
+- В `Game.update` накапливается `#treeRegrowAccumMs`; каждые `TREE_REGROW_INTERVAL_MS` вызывается одна попытка посадить **одно** дерево.
+- Новое дерево выбирается из тех же типов, что и генератор леса (`TreesGenerator.getTreeTileKeys()` / `pickRandomTreeTileKey`).
+- Посадка только если весь отпечаток свободен, не в запретной зоне у замка (`isInsideCastleNoTreeMargin`), соблюдается буфер от построек и **минимальное расстояние Чебышёва** между клетками нового дерева и **любой** клеткой существующего леса равно **1** — лес расширяется только вплотную к уже стоящим деревьям (8-соседство по тайлам), без «островков» вдалеке.
+
+### Где смотреть код
+
+| Область | Файлы |
+|--------|--------|
+| Игровой цикл, ресурсы, постройки, магазин, ферма, рыцари | `client/game/game.js` |
+| Курсы магазина и текст предпросмотра | `client/constants/shop-exchange.js`, `client/ui/ui.js` (модалка) |
+| Стадии фермы и магазина | `client/constants/buildings-progress.js`, тайлы в `tiles.js` |
+| Регенерация леса | `client/game/forest-regrowth.js`, `client/constants/forest-regrowth.js` |

@@ -11,6 +11,10 @@ import {
   KNIGHT_FRAMES_CHOP,
   KNIGHT_FRAMES_RUN,
   KNIGHT_FRAME_IDLE,
+  KNIGHT_FRAME_IDLE_ALT,
+  KNIGHT_IDLE_ALT_DURATION_MS,
+  KNIGHT_IDLE_GAP_MAX_MS,
+  KNIGHT_IDLE_GAP_MIN_MS,
   KNIGHT_RUN_FRAME_MS,
   KNIGHT_SPRITE_SIZE,
 } from '../../constants/knight-atlas.js';
@@ -91,6 +95,9 @@ class KnightUnit {
     this.lastFrameY = y;
     /** Накопленное время почти без смещения в режиме move. */
     this.stalledMoveMs = 0;
+
+    /** @type {number | null} начало окна 2-го кадра idle; каждый новый интервал — свой Math.random() для этого рыцаря */
+    this.idleNextAltAt = null;
   }
 
   /** @returns {{ x: number; y: number }} */
@@ -118,7 +125,7 @@ export class KnightSystem {
   #deleteTreeAt;
 
   /**
-   * @param {{ deleteTreeAt: (x: number, y: number) => void }} param0
+   * @param {{ deleteTreeAt: (x: number, y: number, ownerUserId: string) => void }} param0
    */
   constructor({ deleteTreeAt }) {
     this.#deleteTreeAt = deleteTreeAt;
@@ -247,6 +254,7 @@ export class KnightSystem {
         u.chopTreeTile = null;
         u.chopCooldownMs = 0;
         u.walkAnimStartMs = performance.now();
+        u.idleNextAltAt = null;
         u.pixelGoal = this.#clampTopLeftToWorld(
           worldPx - KNIGHT_SPRITE_SIZE / 2,
           worldPy - KNIGHT_SPRITE_SIZE / 2,
@@ -299,6 +307,7 @@ export class KnightSystem {
       u.mode = 'move';
       u.chopCooldownMs = 0;
       u.walkAnimStartMs = performance.now();
+      u.idleNextAltAt = null;
 
       if (picked) {
         u.path = picked.path;
@@ -399,6 +408,7 @@ export class KnightSystem {
       u.y = ntx.y;
       if (u.walkAnimStartMs == null) {
         u.walkAnimStartMs = performance.now();
+        u.idleNextAltAt = null;
       }
     }
   }
@@ -424,6 +434,7 @@ export class KnightSystem {
           u.path = [];
           u.pixelGoal = null;
           u.walkAnimStartMs = null;
+          u.idleNextAltAt = null;
           u.faceLeft = false;
           continue;
         }
@@ -433,13 +444,14 @@ export class KnightSystem {
           u.path = [];
           u.pixelGoal = null;
           u.walkAnimStartMs = performance.now();
+          u.idleNextAltAt = null;
           continue;
         }
 
         u.chopCooldownMs += dtMs;
         if (u.chopCooldownMs >= CHOP_HIT_INTERVAL_MS) {
           u.chopCooldownMs = 0;
-          this.#deleteTreeAt(u.chopTreeTile.x, u.chopTreeTile.y);
+          this.#deleteTreeAt(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId);
         }
 
         this.#updateFaceTowardWorldPoint(u, {
@@ -463,6 +475,7 @@ export class KnightSystem {
           u.mode = 'chop';
           u.chopCooldownMs = 0;
           u.walkAnimStartMs = null;
+          u.idleNextAltAt = null;
           continue;
         }
       }
@@ -504,10 +517,12 @@ export class KnightSystem {
           u.mode = 'chop';
           u.chopCooldownMs = 0;
           u.walkAnimStartMs = null;
+          u.idleNextAltAt = null;
         } else if (!cell || !isTreeSpriteType(cell.spriteType)) {
           u.chopTreeTile = null;
           u.mode = 'idle';
           u.walkAnimStartMs = null;
+          u.idleNextAltAt = null;
           u.faceLeft = false;
         } else {
           this.#seekTowardChopTree(u, t, state, dtMs, worldWidthPx, worldHeightPx);
@@ -518,6 +533,7 @@ export class KnightSystem {
       if (u.mode === 'move' && u.path.length === 0 && !u.chopTreeTile && !u.pixelGoal) {
         u.mode = 'idle';
         u.walkAnimStartMs = null;
+        u.idleNextAltAt = null;
         u.faceLeft = false;
       }
     }
@@ -533,6 +549,7 @@ export class KnightSystem {
           if (u.stalledMoveMs >= STALL_IDLE_AFTER_MS) {
             // Остаёмся в режиме move (чтобы команда не терялась), но анимацию гасим в idle.
             u.walkAnimStartMs = null;
+            u.idleNextAltAt = null;
           }
         } else {
           u.stalledMoveMs = 0;
@@ -540,6 +557,7 @@ export class KnightSystem {
           // чтобы убрать мерцание run/idle при мелких толчках.
           if (u.walkAnimStartMs == null && moved > STALL_MOVE_EPS_PX * 2.2) {
             u.walkAnimStartMs = performance.now();
+            u.idleNextAltAt = null;
           }
         }
       } else {
@@ -937,6 +955,32 @@ export class KnightSystem {
         Math.floor((performance.now() - u.walkAnimStartMs) / KNIGHT_RUN_FRAME_MS) % KNIGHT_FRAMES_RUN.length;
       return KNIGHT_FRAMES_RUN[i];
     }
+    return this.#pickIdleFrame(u);
+  }
+
+  /**
+   * Новое случайное число миллисекунд при каждом вызове (интервал для конкретного рыцаря).
+   */
+  #randomIdleGapMs() {
+    return KNIGHT_IDLE_GAP_MIN_MS + Math.random() * (KNIGHT_IDLE_GAP_MAX_MS - KNIGHT_IDLE_GAP_MIN_MS);
+  }
+
+  /**
+   * @param {KnightUnit} u
+   */
+  #pickIdleFrame(u) {
+    const now = performance.now();
+    if (u.idleNextAltAt == null) {
+      u.idleNextAltAt = now + this.#randomIdleGapMs();
+    }
+    const altEnd = u.idleNextAltAt + KNIGHT_IDLE_ALT_DURATION_MS;
+    if (now < u.idleNextAltAt) {
+      return KNIGHT_FRAME_IDLE;
+    }
+    if (now < altEnd) {
+      return KNIGHT_FRAME_IDLE_ALT;
+    }
+    u.idleNextAltAt = now + this.#randomIdleGapMs();
     return KNIGHT_FRAME_IDLE;
   }
 }

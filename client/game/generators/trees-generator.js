@@ -44,4 +44,22 @@ export class TreesGenerator {
 
     return this.#generatedTreeTypes[treeTypesArr[randomIndex]];
   }
+
+  /**
+   * Ключ тайла в `tiles` для случайного типа дерева (для переростка леса).
+   *
+   * @returns {string}
+   */
+  static pickRandomTreeTileKey() {
+    const treeTypesArr = Object.keys(this.#generatedTreeTypes);
+    const randomIndex = Random.getRandomFromRange(0, treeTypesArr.length - 1);
+    return treeTypesArr[randomIndex];
+  }
+
+  /**
+   * @returns {string[]}
+   */
+  static getTreeTileKeys() {
+    return Object.keys(this.#generatedTreeTypes);
+  }
 }

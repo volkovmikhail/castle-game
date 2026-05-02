@@ -22,7 +22,7 @@ function loadImage(src) {
   });
 }
 
-Promise.all([loadImage('assets/tilemap.png'), loadImage('assets/knight.png')])
+Promise.all([loadImage('assets/tilemap.png'), loadImage('assets/knight-colored.png')])
   .then(([tileMap, knightImage]) => {
     startGame(tileMap, knightImage);
   })

@@ -1,6 +1,6 @@
 /**
- * Кадры из `client/assets/knight.png` (как в Aseprite JSON: run / beat / default).
- * Исходник описания — `arts/knight.json` (в репозитории не импортируется).
+ * Кадры из `client/assets/knight-colored.png` (32×24, сетка 4×3 по 8×8).
+ * Как в экспорте Aseprite: ряд y=0 — run, y=8 — beat, y=16 — idle (2 кадра).
  */
 export const KNIGHT_SPRITE_SIZE = 8;
 
@@ -23,7 +23,18 @@ export const KNIGHT_FRAMES_CHOP = [
   { sx: 24, sy: 8, sw: 8, sh: 8 },
 ];
 
+/** Основной кадр idle — нижний ряд атласа. */
 export const KNIGHT_FRAME_IDLE = { sx: 0, sy: 16, sw: 8, sh: 8 };
+
+/** Второй кадр idle (короткий показ в цикле). */
+export const KNIGHT_FRAME_IDLE_ALT = { sx: 8, sy: 16, sw: 8, sh: 8 };
+
+/** Длительность показа второго кадра idle (мс). */
+export const KNIGHT_IDLE_ALT_DURATION_MS = 500;
+
+/** Пауза до следующего показа 2-го кадра — случайная в диапазоне [min, max] (мс). */
+export const KNIGHT_IDLE_GAP_MIN_MS = 1500;
+export const KNIGHT_IDLE_GAP_MAX_MS = 4000;
 
 export const KNIGHT_RUN_FRAME_MS = 100;
 export const KNIGHT_CHOP_FRAME_MS = 100;

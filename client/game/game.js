@@ -1,8 +1,29 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
+import {
+  KNIGHT_TOOL_KEY,
+  canAfford,
+  getNumericCost,
+  getPlacementCostEntry,
+  subtractResources,
+} from '../constants/economy.js';
 import { KNIGHT_SPRITE_SIZE } from '../constants/knight-atlas.js';
 import { PLAYER_PROFILES } from '../constants/players.js';
+import {
+  FARM_GROWTH_STAGE_MS,
+  FARM_GROWTH_STAGES,
+  getMarketConstructionStageDurationMs,
+  WHEAT_PER_FARM_HARVEST,
+} from '../constants/buildings-progress.js';
+import {
+  SHOP_WHEAT_PER_ONE_GOLD,
+  SHOP_WHEAT_PER_SPENT_GOLD,
+  SHOP_WOOD_PER_ONE_GOLD,
+  SHOP_WOOD_PER_SPENT_GOLD,
+} from '../constants/shop-exchange.js';
+import { cloneStartingResources, WOOD_PER_KNIGHT_TREE_CHOP } from '../constants/resources.js';
 import { TILE_SIZE } from '../constants/sizes.js';
+import { TREE_REGROW_INTERVAL_MS } from '../constants/forest-regrowth.js';
 import {
   WORLD_HEIGHT_PX,
   WORLD_MIN_VISIBLE_EDGE_PX,
@@ -10,13 +31,12 @@ import {
 } from '../constants/world.js';
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
+import { tryRegrowOneTree } from './forest-regrowth.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
 
 const MAX_BUILD_DISTANCE_CELLS = 2;
 const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
-const AXE_TOOL_KEY = 'axe';
-const KNIGHT_TOOL_KEY = 'knight';
 
 /** @type {{ width: number; height: number; type: string }} */
 const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_SIZE };
@@ -24,6 +44,21 @@ const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_
 export class Game {
   /** @type {KnightSystem} */
   #knightSystem;
+
+  /** @type {Map<string, import('../constants/resources.js').PlayerResources>} */
+  #playerResources = new Map();
+
+  /**
+   * Таймеры постройки магазина и роста фермы.
+   * @type {(
+   *   | { kind: 'market'; x: number; y: number; step: 0 | 1; nextAt: number }
+   *   | { kind: 'farm'; x: number; y: number; nextAt: number }
+   * )[]}
+   */
+  #progressJobs = [];
+
+  /** Накопление времени до следующего выращивания одного дерева. */
+  #treeRegrowAccumMs = 0;
 
   /**
    * Creates an instance of Game.
@@ -55,8 +90,15 @@ export class Game {
     this.localPlayer = PLAYER_PROFILES[0];
 
     this.#knightSystem = new KnightSystem({
-      deleteTreeAt: (x, y) => {
+      deleteTreeAt: (x, y, ownerUserId) => {
         this.stateManager.deleteCell({ x, y });
+        const resources = this.#playerResources.get(ownerUserId);
+        if (resources) {
+          resources.wood += WOOD_PER_KNIGHT_TREE_CHOP;
+          if (ownerUserId === this.localPlayer.userId) {
+            this.ui.setResources(resources);
+          }
+        }
       },
     });
   }
@@ -75,6 +117,8 @@ export class Game {
   #setupWorld() {
     this.stateManager.clear();
     this.#knightSystem.clear();
+    this.#progressJobs = [];
+    this.#treeRegrowAccumMs = 0;
 
     const rendererSize = this.renderer.getRendererSize();
     this.controls.setViewportSize({ width: rendererSize.width, height: rendererSize.height });
@@ -91,7 +135,9 @@ export class Game {
       from: { x: fromX, y: fromY },
       to: { x: toX, y: toY },
     });
+    this.#resetPlayerResources();
     this.#placeInitialCastles();
+    this.#syncResourcesUi();
 
     this.snow = new SnowOverlay({
       width: rendererSize.width,
@@ -146,6 +192,14 @@ export class Game {
   update(timeStep) {
     this.snow?.update(timeStep, this.controls.getScrollOffset());
 
+    this.#treeRegrowAccumMs += timeStep;
+    while (this.#treeRegrowAccumMs >= TREE_REGROW_INTERVAL_MS) {
+      this.#treeRegrowAccumMs -= TREE_REGROW_INTERVAL_MS;
+      tryRegrowOneTree(this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
+    }
+
+    this.#processProgressJobs();
+
     const right = this.controls.consumeRightClickWorld();
     if (right) {
       this.#knightSystem.issueOrder(
@@ -180,49 +234,73 @@ export class Game {
 
         const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
 
-        if (selectedBuilding === AXE_TOOL_KEY) {
-          this.#tryChopTree({ x: tx, y: ty });
-        } else if (selectedBuilding === KNIGHT_TOOL_KEY) {
-          const validationError = this.#validatePlacement({
-            x: tx,
-            y: ty,
-            tileData: KNIGHT_SPAWN_FOOTPRINT,
-          });
-          if (validationError) {
-            this.ui.showToast(validationError);
-          } else {
-            const half = KNIGHT_SPRITE_SIZE / 2;
-            let spawnX = worldPx - half;
-            let spawnY = worldPy - half;
-            const minX = tx;
-            const minY = ty;
-            const maxX = tx + TILE_SIZE - KNIGHT_SPRITE_SIZE;
-            const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_SIZE;
-            spawnX = Math.max(minX, Math.min(maxX, spawnX));
-            spawnY = Math.max(minY, Math.min(maxY, spawnY));
-            this.#knightSystem.spawn({
-              x: spawnX,
-              y: spawnY,
-              ownerUserId: this.localPlayer.userId,
+        if (!this.#tryHarvestFarm(tx, ty) && !this.#tryOpenShop(tx, ty)) {
+          if (selectedBuilding === KNIGHT_TOOL_KEY) {
+            const validationError = this.#validatePlacement({
+              x: tx,
+              y: ty,
+              tileData: KNIGHT_SPAWN_FOOTPRINT,
             });
-          }
-        } else {
-          const tileData = tiles[selectedBuilding];
-          const validationError = this.#validatePlacement({
-            x: tx,
-            y: ty,
-            tileData,
-          });
-
-          if (validationError) {
-            this.ui.showToast(validationError);
+            if (validationError) {
+              this.ui.showToast(validationError);
+            } else {
+              const affordError = this.#tryAffordPlacement(KNIGHT_TOOL_KEY);
+              if (affordError) {
+                this.ui.showToast(affordError);
+              } else {
+                this.#payForPlacement(KNIGHT_TOOL_KEY);
+                const half = KNIGHT_SPRITE_SIZE / 2;
+                let spawnX = worldPx - half;
+                let spawnY = worldPy - half;
+                const minX = tx;
+                const minY = ty;
+                const maxX = tx + TILE_SIZE - KNIGHT_SPRITE_SIZE;
+                const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_SIZE;
+                spawnX = Math.max(minX, Math.min(maxX, spawnX));
+                spawnY = Math.max(minY, Math.min(maxY, spawnY));
+                this.#knightSystem.spawn({
+                  x: spawnX,
+                  y: spawnY,
+                  ownerUserId: this.localPlayer.userId,
+                });
+              }
+            }
           } else {
-            this.stateManager.setCell({
+            const placementTileKey =
+              selectedBuilding === 'market' ? 'marketStage1' : selectedBuilding;
+            const tileData = tiles[placementTileKey];
+            const validationError = this.#validatePlacement({
               x: tx,
               y: ty,
               tileData,
-              ownerUserId: this.localPlayer.userId,
             });
+
+            if (validationError) {
+              this.ui.showToast(validationError);
+            } else {
+              const uniqueError = this.#tryUniquePlacementRule(selectedBuilding);
+              if (uniqueError) {
+                this.ui.showToast(uniqueError);
+              } else {
+                const affordError = this.#tryAffordPlacement(selectedBuilding);
+                if (affordError) {
+                  this.ui.showToast(affordError);
+                } else {
+                  this.#payForPlacement(selectedBuilding);
+                  this.stateManager.setCell({
+                    x: tx,
+                    y: ty,
+                    tileData,
+                    ownerUserId: this.localPlayer.userId,
+                  });
+                  if (selectedBuilding === 'market') {
+                    this.#registerMarketConstruction(tx, ty);
+                  } else if (selectedBuilding === 'farmStage1') {
+                    this.#registerFarmGrowth(tx, ty);
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -231,24 +309,60 @@ export class Game {
     this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
   }
 
+  #resetPlayerResources() {
+    this.#playerResources.clear();
+    for (const playerProfile of PLAYER_PROFILES) {
+      this.#playerResources.set(playerProfile.userId, cloneStartingResources());
+    }
+  }
+
+  #syncResourcesUi() {
+    const resources = this.#playerResources.get(this.localPlayer.userId);
+    if (resources) {
+      this.ui.setResources(resources);
+    }
+  }
+
   /**
-   * @param {{ x: number; y: number }} param0
+   * @param {string} toolKey
+   * @returns {string | null}
    */
-  #tryChopTree({ x, y }) {
-    const state = this.stateManager.getState();
-    const cell = state.get(`${x}:${y}`);
+  #tryUniquePlacementRule(toolKey) {
+    const entry = getPlacementCostEntry(toolKey);
+    if (!entry.uniquePerPlayer) {
+      return null;
+    }
+    if (toolKey === 'market' && this.#playerHasAnyMarket(this.localPlayer.userId)) {
+      return 'Магазин можно построить только один раз.';
+    }
+    return null;
+  }
 
-    if (!cell) {
-      this.ui.showToast('Здесь нечего рубить.');
+  /**
+   * @param {string} toolKey
+   * @returns {string | null}
+   */
+  #tryAffordPlacement(toolKey) {
+    const resources = this.#playerResources.get(this.localPlayer.userId);
+    if (!resources) {
+      return 'Нет данных ресурсов.';
+    }
+    if (!canAfford(resources, getNumericCost(toolKey))) {
+      return 'Недостаточно ресурсов.';
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} toolKey
+   */
+  #payForPlacement(toolKey) {
+    const resources = this.#playerResources.get(this.localPlayer.userId);
+    if (!resources) {
       return;
     }
-
-    if (!this.#isTreeSpriteType(cell.spriteType)) {
-      this.ui.showToast('Топором можно рубить только деревья.');
-      return;
-    }
-
-    this.stateManager.deleteCell({ x, y });
+    subtractResources(resources, getNumericCost(toolKey));
+    this.ui.setResources(resources);
   }
 
   /**
@@ -298,7 +412,12 @@ export class Game {
    * @returns {boolean}
    */
   #isHomeBuildingType(spriteType) {
-    return spriteType === 'castle' || spriteType.startsWith('house');
+    return (
+      spriteType === 'castle' ||
+      spriteType === 'houseFarm' ||
+      spriteType.startsWith('farmStage') ||
+      spriteType.startsWith('house')
+    );
   }
 
   /**
@@ -425,5 +544,255 @@ export class Game {
         ownerUserId: playerProfile.userId,
       });
     }
+  }
+
+  #processProgressJobs() {
+    const now = performance.now();
+    const stageMs = getMarketConstructionStageDurationMs();
+    const keep = [];
+
+    for (const job of this.#progressJobs) {
+      if (now < job.nextAt) {
+        keep.push(job);
+        continue;
+      }
+
+      if (job.kind === 'market') {
+        if (job.step === 0) {
+          this.#replaceTileAt(job.x, job.y, 'marketStage2');
+          job.step = 1;
+          job.nextAt = now + stageMs;
+          keep.push(job);
+        } else {
+          this.#replaceTileAt(job.x, job.y, 'market');
+        }
+        continue;
+      }
+
+      if (job.kind === 'farm') {
+        if (this.#advanceFarmGrowthJob(job, now)) {
+          keep.push(job);
+        }
+      }
+    }
+
+    this.#progressJobs = keep;
+  }
+
+  /**
+   * @param {string} tileKey
+   */
+  #replaceTileAt(x, y, tileKey) {
+    const state = this.stateManager.getState();
+    const key = `${x}:${y}`;
+    const cell = state.get(key);
+    if (!cell?.isRenderable) {
+      return;
+    }
+    const ownerUserId = cell.ownerUserId;
+    const tileData = tiles[tileKey];
+    if (!tileData) {
+      return;
+    }
+    this.stateManager.deleteCell({ x, y });
+    this.stateManager.setCell({ x, y, tileData, ownerUserId });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  #registerMarketConstruction(x, y) {
+    this.#progressJobs.push({
+      kind: 'market',
+      x,
+      y,
+      step: 0,
+      nextAt: performance.now() + getMarketConstructionStageDurationMs(),
+    });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  #registerFarmGrowth(x, y) {
+    this.#progressJobs.push({
+      kind: 'farm',
+      x,
+      y,
+      nextAt: performance.now() + FARM_GROWTH_STAGE_MS,
+    });
+  }
+
+  /**
+   * @param {{ kind: 'farm'; x: number; y: number; nextAt: number }} job
+   * @param {number} now
+   * @returns {boolean} оставить задачу в очереди
+   */
+  #advanceFarmGrowthJob(job, now) {
+    const state = this.stateManager.getState();
+    const cell = state.get(`${job.x}:${job.y}`);
+    if (!cell?.isRenderable) {
+      return false;
+    }
+
+    const t = cell.spriteType;
+    const idx = FARM_GROWTH_STAGES.indexOf(t);
+    if (idx < 0 || idx >= FARM_GROWTH_STAGES.length - 1) {
+      return false;
+    }
+
+    const nextType = FARM_GROWTH_STAGES[idx + 1];
+    this.#replaceTileAt(job.x, job.y, nextType);
+
+    if (nextType === 'farmStage4') {
+      return false;
+    }
+
+    job.nextAt = now + FARM_GROWTH_STAGE_MS;
+    return true;
+  }
+
+  /**
+   * Клик по магазину: модалка обмена или сообщение.
+   *
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {boolean} true если клик относится к магазину (обработан)
+   */
+  #tryOpenShop(tx, ty) {
+    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
+    if (!cell?.isRenderable) {
+      return false;
+    }
+
+    if (cell.spriteType === 'marketStage1' || cell.spriteType === 'marketStage2') {
+      this.ui.showToast('Магазин ещё строится.');
+      return true;
+    }
+
+    if (cell.spriteType !== 'market') {
+      return false;
+    }
+
+    if (cell.ownerUserId !== this.localPlayer.userId) {
+      this.ui.showToast('Это не ваш магазин.');
+      return true;
+    }
+
+    this.ui.openMarketShop({
+      getResources: () => this.#playerResources.get(this.localPlayer.userId),
+      onExchange: (kind, qty) => this.#shopExchange(kind, qty),
+    });
+    return true;
+  }
+
+  /**
+   * @param {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'} kind
+   * @param {number} qty
+   * @returns {{ ok: boolean; message?: string }}
+   */
+  #shopExchange(kind, qty) {
+    const q = Math.floor(Number(qty));
+    if (!Number.isFinite(q) || q <= 0) {
+      return { ok: false, message: 'Укажите количество больше нуля.' };
+    }
+
+    const resources = this.#playerResources.get(this.localPlayer.userId);
+    if (!resources) {
+      return { ok: false, message: 'Нет данных ресурсов.' };
+    }
+
+    switch (kind) {
+      case 'wheatToGold': {
+        const batches = Math.floor(q / SHOP_WHEAT_PER_ONE_GOLD);
+        if (batches < 1) {
+          return { ok: false, message: `Нужно минимум ${SHOP_WHEAT_PER_ONE_GOLD} пшеницы.` };
+        }
+        const cost = batches * SHOP_WHEAT_PER_ONE_GOLD;
+        if (resources.wheat < cost) {
+          return { ok: false, message: 'Недостаточно пшеницы.' };
+        }
+        resources.wheat -= cost;
+        resources.gold += batches;
+        break;
+      }
+      case 'woodToGold': {
+        const batches = Math.floor(q / SHOP_WOOD_PER_ONE_GOLD);
+        if (batches < 1) {
+          return { ok: false, message: `Нужно минимум ${SHOP_WOOD_PER_ONE_GOLD} дерева.` };
+        }
+        const cost = batches * SHOP_WOOD_PER_ONE_GOLD;
+        if (resources.wood < cost) {
+          return { ok: false, message: 'Недостаточно дерева.' };
+        }
+        resources.wood -= cost;
+        resources.gold += batches;
+        break;
+      }
+      case 'goldToWood': {
+        if (resources.gold < q) {
+          return { ok: false, message: 'Недостаточно золота.' };
+        }
+        resources.gold -= q;
+        resources.wood += q * SHOP_WOOD_PER_SPENT_GOLD;
+        break;
+      }
+      case 'goldToWheat': {
+        if (resources.gold < q) {
+          return { ok: false, message: 'Недостаточно золота.' };
+        }
+        resources.gold -= q;
+        resources.wheat += q * SHOP_WHEAT_PER_SPENT_GOLD;
+        break;
+      }
+      default:
+        return { ok: false, message: 'Неизвестный тип обмена.' };
+    }
+
+    this.ui.setResources(resources);
+    return { ok: true };
+  }
+
+  /**
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {boolean} клик обработан (в т.ч. чужая ферма — тост)
+   */
+  #tryHarvestFarm(tx, ty) {
+    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
+    if (!cell?.isRenderable || cell.spriteType !== 'farmStage4') {
+      return false;
+    }
+
+    if (cell.ownerUserId !== this.localPlayer.userId) {
+      this.ui.showToast('Это не ваша ферма.');
+      return true;
+    }
+
+    const resources = this.#playerResources.get(this.localPlayer.userId);
+    if (resources) {
+      resources.wheat += WHEAT_PER_FARM_HARVEST;
+      this.ui.setResources(resources);
+    }
+
+    this.#replaceTileAt(tx, ty, 'farmStage1');
+    this.#registerFarmGrowth(tx, ty);
+    return true;
+  }
+
+  /**
+   * @param {string} userId
+   * @returns {boolean}
+   */
+  #playerHasAnyMarket(userId) {
+    const constructionOrDone = new Set(['market', 'marketStage1', 'marketStage2']);
+    for (const [, cell] of this.stateManager.getState().entries()) {
+      if (cell.isRenderable && cell.ownerUserId === userId && constructionOrDone.has(cell.spriteType)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
