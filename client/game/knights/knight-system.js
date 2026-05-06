@@ -18,6 +18,12 @@ import {
   KNIGHT_RUN_FRAME_MS,
   KNIGHT_SPRITE_SIZE,
 } from '../../constants/knight-atlas.js';
+import {
+  PLAYER_BUILDING_TRIANGLE_GAP_PX,
+  PLAYER_BUILDING_TRIANGLE_HALF_BASE_PX,
+  PLAYER_BUILDING_TRIANGLE_HEIGHT_PX,
+  PLAYER_INDICATOR_COLOR,
+} from '../../constants/player-building-indicator.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
 
 const MOVE_SPEED_PX_PER_MS = 0.05;
@@ -880,8 +886,10 @@ export class KnightSystem {
    * @param {CanvasRenderingContext2D} ctx
    * @param {{ offsetX: number; offsetY: number }} scrollOffset
    * @param {CanvasImageSource} knightImage
+   * @param {boolean} showPlayerIndicators
+   * @param {string} localPlayerUserId
    */
-  render(ctx, scrollOffset, knightImage) {
+  render(ctx, scrollOffset, knightImage, showPlayerIndicators = false, localPlayerUserId = '') {
     const { offsetX, offsetY } = scrollOffset;
 
     for (const u of this.#units) {
@@ -939,7 +947,38 @@ export class KnightSystem {
         ctx.fillRect(R, T, 1, barH);
         ctx.restore();
       }
+
+      if (showPlayerIndicators && u.ownerUserId === localPlayerUserId) {
+        this.#drawPlayerTriangle(ctx, screenX, screenY, PLAYER_INDICATOR_COLOR);
+      }
     }
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} screenX
+   * @param {number} screenY
+   * @param {string} color
+   */
+  #drawPlayerTriangle(ctx, screenX, screenY, color) {
+    const cx = Math.round(screenX + KNIGHT_SPRITE_SIZE / 2);
+    const tipY = Math.round(screenY - PLAYER_BUILDING_TRIANGLE_GAP_PX);
+    const topY = tipY - PLAYER_BUILDING_TRIANGLE_HEIGHT_PX;
+    const hb = PLAYER_BUILDING_TRIANGLE_HALF_BASE_PX;
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 1;
+
+    for (let row = 0; row <= PLAYER_BUILDING_TRIANGLE_HEIGHT_PX; row += 1) {
+      const rowY = topY + row;
+      const halfWidth = Math.floor((hb * (PLAYER_BUILDING_TRIANGLE_HEIGHT_PX - row)) / PLAYER_BUILDING_TRIANGLE_HEIGHT_PX);
+      const rowX = cx - halfWidth;
+      const rowWidth = halfWidth * 2 + 1;
+      ctx.fillRect(rowX, rowY, rowWidth, 1);
+    }
+
+    ctx.restore();
   }
 
   /**

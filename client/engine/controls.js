@@ -63,9 +63,28 @@ export class Controls {
    * @type {boolean}
    */
   #lastLeftClickShift = false;
+  #isSpacePressed = false;
 
   init() {
     this.setViewportSize({ width: this.canvas.width, height: this.canvas.height });
+
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') {
+        this.#isSpacePressed = true;
+        event.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', (event) => {
+      if (event.code === 'Space') {
+        this.#isSpacePressed = false;
+        event.preventDefault();
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      this.#isSpacePressed = false;
+    });
 
     this.canvas.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -351,5 +370,9 @@ export class Controls {
       offsetX: this.#scrollOffsetX,
       offsetY: this.#scrollOffsetY,
     });
+  }
+
+  isSpacePressed() {
+    return this.#isSpacePressed;
   }
 }

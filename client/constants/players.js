@@ -26,3 +26,15 @@ export const PLAYER_PROFILES = [
     castleStart: { x: 31 * TILE_SIZE, y: 56 * TILE_SIZE },
   },
 ];
+
+/**
+ * @param {string | null | undefined} userId
+ * @returns {string | undefined} CSS-цвет или undefined, если игрок не найден
+ */
+export function getPlayerColor(userId) {
+  if (!userId) {
+    return undefined;
+  }
+  const profile = PLAYER_PROFILES.find((p) => p.userId === userId);
+  return profile?.color;
+}

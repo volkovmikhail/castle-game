@@ -1,4 +1,12 @@
+import { isTreeSpriteType } from '../common/grid-path.js';
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
+import {
+  PLAYER_BUILDING_TRIANGLE_GAP_PX,
+  PLAYER_BUILDING_TRIANGLE_HALF_BASE_PX,
+  PLAYER_BUILDING_TRIANGLE_HEIGHT_PX,
+  PLAYER_INDICATOR_COLOR,
+  SHOW_PLAYER_COLOR_TRIANGLE_ABOVE_OWNED_BUILDINGS,
+} from '../constants/player-building-indicator.js';
 import { SELECTOR_LINE_WIDTH, TILE_SIZE } from '../constants/sizes.js';
 import { tiles } from '../constants/tiles.js';
 import {
@@ -75,9 +83,14 @@ export class CanvasRenderer {
   }
 
   /**
-   * @param {{state: Map<string, Cell>, scrollOffset: {offsetX: number, offsetY: number}}}
+   * @param {{
+   *   state: Map<string, Cell>;
+   *   scrollOffset: {offsetX: number, offsetY: number};
+   *   showPlayerIndicators?: boolean;
+   *   localPlayerUserId?: string;
+   * }}
    */
-  drawState({ state, scrollOffset: { offsetX, offsetY } }) {
+  drawState({ state, scrollOffset: { offsetX, offsetY }, showPlayerIndicators = false, localPlayerUserId = null }) {
     for (const [cords, cell] of state.entries()) {
       if (cell.isRenderable) {
         let [x, y] = cords.split(':');
@@ -85,15 +98,15 @@ export class CanvasRenderer {
         x = Number(x) + offsetX;
         y = Number(y) + offsetY;
 
-        this.drawCell({ x, y, cell });
+        this.drawCell({ x, y, cell, showPlayerIndicators, localPlayerUserId });
       }
     }
   }
 
   /**
-   * @param {{ x: number; y: number; cell: Cell; }}
+   * @param {{ x: number; y: number; cell: Cell; showPlayerIndicators: boolean; localPlayerUserId: string | null; }}
    */
-  drawCell({ x, y, cell }) {
+  drawCell({ x, y, cell, showPlayerIndicators, localPlayerUserId }) {
     const tileData = tiles[cell.spriteType];
 
     const sprite = new Sprite(tileData);
@@ -103,6 +116,50 @@ export class CanvasRenderer {
     this.drawSprite(sprite);
 
     sprite.drawPostEffects(this.ctx, this.tileMap, performance.now(), cell);
+
+    if (
+      showPlayerIndicators &&
+      SHOW_PLAYER_COLOR_TRIANGLE_ABOVE_OWNED_BUILDINGS &&
+      cell.ownerUserId &&
+      cell.ownerUserId === localPlayerUserId &&
+      !isTreeSpriteType(cell.spriteType) &&
+      cell.spriteType !== 'knight'
+    ) {
+      this.#drawPlayerColorTriangleAboveBuilding({
+        x,
+        y,
+        width: tileData.width,
+        color: PLAYER_INDICATOR_COLOR,
+      });
+    }
+  }
+
+  /**
+   * Остриё вниз к зданию, широкое основание выше.
+   *
+   * @param {{ x: number; y: number; width: number; color: string }} param0
+   */
+  #drawPlayerColorTriangleAboveBuilding({ x, y, width, color }) {
+    const cx = Math.round(x + width / 2);
+    const tipY = Math.round(y - PLAYER_BUILDING_TRIANGLE_GAP_PX);
+    const topY = tipY - PLAYER_BUILDING_TRIANGLE_HEIGHT_PX;
+    const hb = PLAYER_BUILDING_TRIANGLE_HALF_BASE_PX;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 1;
+
+    // Draw by integer pixel rows to avoid anti-aliased edges.
+    for (let row = 0; row <= PLAYER_BUILDING_TRIANGLE_HEIGHT_PX; row += 1) {
+      const rowY = topY + row;
+      const halfWidth = Math.floor((hb * (PLAYER_BUILDING_TRIANGLE_HEIGHT_PX - row)) / PLAYER_BUILDING_TRIANGLE_HEIGHT_PX);
+      const rowX = cx - halfWidth;
+      const rowWidth = halfWidth * 2 + 1;
+      ctx.fillRect(rowX, rowY, rowWidth, 1);
+    }
+
+    ctx.restore();
   }
 
   /**

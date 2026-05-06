@@ -166,9 +166,22 @@ export class Game {
       height: tileData.height,
     });
 
-    this.renderer.drawState({ state: this.stateManager.getState(), scrollOffset: this.controls.getScrollOffset() });
+    const showPlayerIndicators = this.controls.isSpacePressed();
 
-    this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
+    this.renderer.drawState({
+      state: this.stateManager.getState(),
+      scrollOffset: this.controls.getScrollOffset(),
+      showPlayerIndicators,
+      localPlayerUserId: this.localPlayer.userId,
+    });
+
+    this.#knightSystem.render(
+      this.renderer.ctx,
+      this.controls.getScrollOffset(),
+      this.knightImage,
+      showPlayerIndicators,
+      this.localPlayer.userId
+    );
 
     const marqueeDraft = this.controls.getMarqueeDraftWorldRect();
     if (marqueeDraft) {
