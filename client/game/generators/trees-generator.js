@@ -19,9 +19,14 @@ export class TreesGenerator {
   /**
    * @typedef {import('../../engine/state/state-manager.js').StateManager} StateManager
    * @param {StateManager} stateManager
-   * @param {{from: {x: number, y:number}, to: {x:number,y:number}}} param generate cube of trees with cords <from> <to>
+   * @param {{
+   *   from: { x: number; y: number };
+   *   to: { x: number; y: number };
+   *   knightOccupiedTileKeys?: Set<string>;
+   * }} param generate cube of trees with cords <from> <to>
    */
-  static generateTrees(stateManager, { from, to }) {
+  static generateTrees(stateManager, { from, to, knightOccupiedTileKeys }) {
+    const blocked = knightOccupiedTileKeys ?? new Set();
     for (let x = from.x; x <= to.x; x += TILE_SIZE) {
       for (let y = from.y; y <= to.y; y += TILE_SIZE) {
         if (isInsideCastleNoTreeMargin(x, y)) {
@@ -29,10 +34,26 @@ export class TreesGenerator {
         }
 
         const randomTreeType = this.#getRandomTreeType();
+        const tileData = tiles[randomTreeType];
+        const cellsWide = tileData.width / TILE_SIZE;
+        const cellsHigh = tileData.height / TILE_SIZE;
+        let underKnight = false;
+        for (let ix = 0; ix < cellsWide && !underKnight; ix++) {
+          for (let iy = 0; iy < cellsHigh && !underKnight; iy++) {
+            const cx = x + ix * TILE_SIZE;
+            const cy = y + iy * TILE_SIZE;
+            if (blocked.has(`${cx}:${cy}`)) {
+              underKnight = true;
+            }
+          }
+        }
+        if (underKnight) {
+          continue;
+        }
 
         const treeEntity = new Tree({ treeType: randomTreeType });
 
-        stateManager.setCell({ x, y, tileData: tiles[randomTreeType], entity: treeEntity });
+        stateManager.setCell({ x, y, tileData, entity: treeEntity });
       }
     }
   }

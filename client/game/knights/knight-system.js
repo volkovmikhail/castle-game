@@ -152,6 +152,21 @@ export class KnightSystem {
     this.#applyChopHit = applyChopHit;
   }
 
+  /**
+   * Тайлы `${tx}:${ty}`, с которыми пересекается хитбокс хотя бы одного рыцаря (для леса и пр.).
+   *
+   * @returns {Set<string>}
+   */
+  getOccupiedTileKeys() {
+    const keys = new Set();
+    for (const u of this.#units) {
+      for (const { tx, ty } of this.#tileOriginsUnderKnight(u.x, u.y)) {
+        keys.add(`${tx}:${ty}`);
+      }
+    }
+    return keys;
+  }
+
   clear() {
     this.#units.length = 0;
     this.#selectedIds.clear();

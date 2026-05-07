@@ -202,6 +202,7 @@ export class Game {
     TreesGenerator.generateTrees(this.stateManager, {
       from: { x: fromX, y: fromY },
       to: { x: toX, y: toY },
+      knightOccupiedTileKeys: this.#knightSystem.getOccupiedTileKeys(),
     });
     this.#resetPlayerResources();
     this.#placeInitialCastles();
@@ -277,7 +278,12 @@ export class Game {
     this.#treeRegrowAccumMs += timeStep;
     while (this.#treeRegrowAccumMs >= TREE_REGROW_INTERVAL_MS) {
       this.#treeRegrowAccumMs -= TREE_REGROW_INTERVAL_MS;
-      tryRegrowOneTree(this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
+      tryRegrowOneTree(
+        this.stateManager,
+        WORLD_WIDTH_PX,
+        WORLD_HEIGHT_PX,
+        this.#knightSystem.getOccupiedTileKeys()
+      );
     }
 
     this.#processProgressJobs();

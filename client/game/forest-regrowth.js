@@ -123,12 +123,23 @@ function treeFootprintCellTooCloseToBuildings(ti, tj, buildingTiles) {
 }
 
 /**
- * Все клетки отпечатка свободны, в мире, не в запретной зоне замка, не рядом с зданиями.
+ * Все клетки отпечатка свободны, в мире, не в запретной зоне замка, не рядом с зданиями,
+ * не под рыцарями.
  *
  * @param {Map<string, import('../engine/state/cell.js').Cell>} state
  * @param {{ ti: number; tj: number }[]} buildingTiles
+ * @param {Set<string>} knightOccupiedTileKeys ключи `${cx}:${cy}` тайлов под рыцарями
  */
-function canPlaceTreeFootprint(state, worldWidthPx, worldHeightPx, buildingTiles, x, y, tileData) {
+function canPlaceTreeFootprint(
+  state,
+  worldWidthPx,
+  worldHeightPx,
+  buildingTiles,
+  knightOccupiedTileKeys,
+  x,
+  y,
+  tileData
+) {
   if (x < 0 || y < 0 || x + tileData.width > worldWidthPx || y + tileData.height > worldHeightPx) {
     return false;
   }
@@ -144,6 +155,9 @@ function canPlaceTreeFootprint(state, worldWidthPx, worldHeightPx, buildingTiles
         return false;
       }
       if (state.has(`${cx}:${cy}`)) {
+        return false;
+      }
+      if (knightOccupiedTileKeys.has(`${cx}:${cy}`)) {
         return false;
       }
       const ti = Math.floor(cx / TILE_SIZE);
@@ -176,9 +190,10 @@ function shuffleInPlace(arr) {
  * @param {import('../engine/state/state-manager.js').StateManager} stateManager
  * @param {number} worldWidthPx
  * @param {number} worldHeightPx
+ * @param {Set<string>} knightOccupiedTileKeys тайлы под рыцарями — деревья там не появляются
  * @returns {boolean}
  */
-export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx) {
+export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx, knightOccupiedTileKeys) {
   const state = stateManager.getState();
   const buildingTiles = collectBuildingTileCoords(state);
 
@@ -227,7 +242,18 @@ export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx) {
       if (!tileData) {
         continue;
       }
-      if (!canPlaceTreeFootprint(state, worldWidthPx, worldHeightPx, buildingTiles, nx, ny, tileData)) {
+      if (
+        !canPlaceTreeFootprint(
+          state,
+          worldWidthPx,
+          worldHeightPx,
+          buildingTiles,
+          knightOccupiedTileKeys,
+          nx,
+          ny,
+          tileData
+        )
+      ) {
         continue;
       }
       const newTiles = footprintTileIndices(nx, ny, tileData);
