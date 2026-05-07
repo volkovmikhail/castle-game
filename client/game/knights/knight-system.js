@@ -202,6 +202,20 @@ export class KnightSystem {
   }
 
   /**
+   * Выделить всех рыцарей локального игрока (остальные снимаются).
+   *
+   * @param {string} localOwnerId
+   */
+  selectAllKnightsForOwner(localOwnerId) {
+    this.#selectedIds.clear();
+    for (const u of this.#units) {
+      if (u.ownerUserId === localOwnerId) {
+        this.#selectedIds.add(u.id);
+      }
+    }
+  }
+
+  /**
    * Выделить всех своих рыцарей, чей хитбокс пересекает прямоугольник в мировых пикселях (min/max по осям).
    *
    * @param {number} wx0

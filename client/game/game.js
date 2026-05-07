@@ -238,6 +238,10 @@ export class Game {
       );
     }
 
+    if (this.controls.consumeSelectAllKnightsRequest()) {
+      this.#knightSystem.selectAllKnightsForOwner(this.localPlayer.userId);
+    }
+
     const clickedCords = this.controls.getClickedCoords();
 
     if (clickedCords !== null) {

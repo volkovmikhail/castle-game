@@ -64,6 +64,7 @@ export class Controls {
    */
   #lastLeftClickShift = false;
   #isSpacePressed = false;
+  #pendingSelectAllKnights = false;
 
   init() {
     this.setViewportSize({ width: this.canvas.width, height: this.canvas.height });
@@ -71,6 +72,24 @@ export class Controls {
     window.addEventListener('keydown', (event) => {
       if (event.code === 'Space') {
         this.#isSpacePressed = true;
+        event.preventDefault();
+      }
+      if (
+        event.code === 'KeyA' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.repeat
+      ) {
+        const t = event.target;
+        if (
+          t instanceof HTMLElement &&
+          (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+        ) {
+          return;
+        }
+        this.#pendingSelectAllKnights = true;
         event.preventDefault();
       }
     });
@@ -374,5 +393,16 @@ export class Controls {
 
   isSpacePressed() {
     return this.#isSpacePressed;
+  }
+
+  /**
+   * Один раз за нажатие Shift+A (выделить всех своих рыцарей).
+   *
+   * @returns {boolean}
+   */
+  consumeSelectAllKnightsRequest() {
+    const v = this.#pendingSelectAllKnights;
+    this.#pendingSelectAllKnights = false;
+    return v;
   }
 }
