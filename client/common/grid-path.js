@@ -263,3 +263,78 @@ export function neighborStandTiles8ForTree(treePx, treePy) {
   }
   return out;
 }
+
+/**
+ * Левый верх якоря цели с HP по любой клетке отпечатка (общая ссылка entity).
+ *
+ * @param {number} tx
+ * @param {number} ty
+ * @param {Map<string, import('../engine/state/cell.js').Cell>} state
+ * @returns {{ x: number; y: number } | null}
+ */
+export function resolveStructureAnchor(tx, ty, state) {
+  const start = state.get(`${tx}:${ty}`);
+  if (!start?.entity || start.entity.maxHp == null) {
+    return null;
+  }
+  const ent = start.entity;
+  let x = tx;
+  let y = ty;
+  while (true) {
+    const left = state.get(`${x - TILE_SIZE}:${y}`);
+    if (left?.entity === ent) {
+      x -= TILE_SIZE;
+      continue;
+    }
+    break;
+  }
+  while (true) {
+    const up = state.get(`${x}:${y - TILE_SIZE}`);
+    if (up?.entity === ent) {
+      y -= TILE_SIZE;
+      continue;
+    }
+    break;
+  }
+  return { x, y };
+}
+
+/**
+ * Клетки стоянки в 8-соседстве с прямоугольным отпечатком (левый верх якоря, размеры в px).
+ *
+ * @param {number} anchorPx
+ * @param {number} anchorPy
+ * @param {number} widthPx
+ * @param {number} heightPx
+ * @returns {{ x: number; y: number }[]}
+ */
+export function neighborStandTiles8ForFootprint(anchorPx, anchorPy, widthPx, heightPx) {
+  const tw = widthPx / TILE_SIZE;
+  const th = heightPx / TILE_SIZE;
+  /** @type {Set<string>} */
+  const footprint = new Set();
+  for (let i = 0; i < tw; i++) {
+    for (let j = 0; j < th; j++) {
+      footprint.add(`${anchorPx + i * TILE_SIZE}:${anchorPy + j * TILE_SIZE}`);
+    }
+  }
+  /** @type {Map<string, { x: number; y: number }>} */
+  const out = new Map();
+  for (const key of footprint) {
+    const [px, py] = key.split(':').map(Number);
+    for (let ix = -1; ix <= 1; ix++) {
+      for (let iy = -1; iy <= 1; iy++) {
+        if (ix === 0 && iy === 0) {
+          continue;
+        }
+        const nx = px + ix * TILE_SIZE;
+        const ny = py + iy * TILE_SIZE;
+        const nk = `${nx}:${ny}`;
+        if (!footprint.has(nk)) {
+          out.set(nk, { x: nx, y: ny });
+        }
+      }
+    }
+  }
+  return [...out.values()];
+}

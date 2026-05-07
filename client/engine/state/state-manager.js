@@ -25,6 +25,21 @@ export class StateManager {
   }
 
   /**
+   * Удаляет все клетки прямоугольного отпечатка (левый верх — x, y).
+   *
+   * @param {{ x: number; y: number; tileData: { width: number; height: number } }} param0
+   */
+  deleteFootprint({ x, y, tileData }) {
+    const cellWidth = tileData.width / TILE_SIZE;
+    const cellHeight = tileData.height / TILE_SIZE;
+    for (let i = 0; i < cellWidth; i++) {
+      for (let j = 0; j < cellHeight; j++) {
+        this.deleteCell({ x: x + i * TILE_SIZE, y: y + j * TILE_SIZE });
+      }
+    }
+  }
+
+  /**
    * @param {{
    *   x: number;
    *   y: number;
@@ -57,7 +72,8 @@ export class StateManager {
             spriteType: tileData.type,
             isRenderable,
             ownerUserId,
-            entity: isRenderable ? entity : null, // set entity only for renderable cells, to avoid entity duplication
+            // Одна ссылка на entity (HP и т.д.) на все клетки отпечатка — нужно для урона с любой клетки.
+            entity: entity ?? null,
           })
         );
       }

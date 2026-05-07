@@ -3,7 +3,9 @@ import {
   hasStraightWalk,
   isTreeSpriteType,
   isWalkableTile,
+  neighborStandTiles8ForFootprint,
   neighborStandTiles8ForTree,
+  resolveStructureAnchor,
 } from '../../common/grid-path.js';
 import {
   KNIGHT_CHOP_FRAME_MS,
@@ -26,6 +28,7 @@ import {
   PLAYER_INDICATOR_COLOR,
 } from '../../constants/player-building-indicator.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
+import { tiles } from '../../constants/tiles.js';
 
 const MOVE_SPEED_PX_PER_MS = 0.05;
 const CHOP_HIT_INTERVAL_MS = 550;
@@ -91,6 +94,10 @@ class KnightUnit {
     /** @type {{ x: number; y: number } | null} */
     this.chopTreeTile = null;
 
+    /** Ширина/высота цели удара в px (якорь — chopTreeTile). */
+    this.attackFpW = TILE_SIZE;
+    this.attackFpH = TILE_SIZE;
+
     /** Целевой левый верх спрайта после прохождения тайлового пути (пиксели мира). */
     /** @type {{ x: number; y: number } | null} */
     this.pixelGoal = null;
@@ -135,14 +142,14 @@ export class KnightSystem {
   /** @type {Set<number>} */
   #selectedIds = new Set();
 
-  /** @type {(x: number, y: number) => void} */
-  #deleteTreeAt;
+  /** @type {(anchorTx: number, anchorTy: number, knightOwnerId: string) => void} */
+  #applyChopHit;
 
   /**
-   * @param {{ deleteTreeAt: (x: number, y: number, ownerUserId: string) => void }} param0
+   * @param {{ applyChopHit: (anchorTx: number, anchorTy: number, knightOwnerId: string) => void }} param0
    */
-  constructor({ deleteTreeAt }) {
-    this.#deleteTreeAt = deleteTreeAt;
+  constructor({ applyChopHit }) {
+    this.#applyChopHit = applyChopHit;
   }
 
   clear() {
@@ -273,6 +280,35 @@ export class KnightSystem {
       return;
     }
 
+    const structureAnchor = resolveStructureAnchor(treeTx, treeTy, state);
+    if (structureAnchor) {
+      const anchorCell = state.get(`${structureAnchor.x}:${structureAnchor.y}`);
+      const td = anchorCell ? tiles[anchorCell.spriteType] : null;
+      if (
+        anchorCell &&
+        td &&
+        !isTreeSpriteType(anchorCell.spriteType) &&
+        anchorCell.spriteType !== 'knight' &&
+        anchorCell.entity?.hp != null &&
+        anchorCell.ownerUserId &&
+        anchorCell.ownerUserId !== localOwnerId
+      ) {
+        const neighbors = neighborStandTiles8ForFootprint(
+          structureAnchor.x,
+          structureAnchor.y,
+          td.width,
+          td.height
+        ).filter((t) => isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx));
+        this.#orderChopGroup(selected, structureAnchor, state, worldWidthPx, worldHeightPx, showToast, {
+          footprintW: td.width,
+          footprintH: td.height,
+          neighborTiles: neighbors,
+          cantApproachMsg: 'К зданию не подойти.',
+        });
+        return;
+      }
+    }
+
     const goal = { x: worldPx, y: worldPy };
     let anyPath = false;
     for (const u of selected) {
@@ -281,6 +317,8 @@ export class KnightSystem {
         u.path = path;
         u.mode = 'move';
         u.chopTreeTile = null;
+        u.attackFpW = TILE_SIZE;
+        u.attackFpH = TILE_SIZE;
         u.chopCooldownMs = 0;
         u.walkAnimStartMs = performance.now();
         u.idleNextAltAt = null;
@@ -300,19 +338,25 @@ export class KnightSystem {
 
   /**
    * @param {KnightUnit[]} units
-   * @param {{ x: number; y: number }} treeTile
+   * @param {{ x: number; y: number }} anchorTile якорь цели (левый верх отпечатка)
    * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
    * @param {number} worldWidthPx
    * @param {number} worldHeightPx
    * @param {(msg: string) => void} showToast
+   * @param {{ footprintW?: number; footprintH?: number; neighborTiles?: { x: number; y: number }[]; cantApproachMsg?: string }} [opts]
    */
-  #orderChopGroup(units, treeTile, state, worldWidthPx, worldHeightPx, showToast) {
-    const neighbors = neighborStandTiles8ForTree(treeTile.x, treeTile.y).filter((t) =>
-      isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
-    );
+  #orderChopGroup(units, anchorTile, state, worldWidthPx, worldHeightPx, showToast, opts = {}) {
+    const footprintW = opts.footprintW ?? TILE_SIZE;
+    const footprintH = opts.footprintH ?? TILE_SIZE;
+    const cantApproachMsg = opts.cantApproachMsg ?? 'К дереву не подойти.';
+    const neighbors =
+      opts.neighborTiles ??
+      neighborStandTiles8ForTree(anchorTile.x, anchorTile.y).filter((t) =>
+        isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
+      );
 
     if (neighbors.length === 0) {
-      showToast('К дереву не подойти.');
+      showToast(cantApproachMsg);
       return;
     }
 
@@ -332,7 +376,9 @@ export class KnightSystem {
         }
       }
 
-      u.chopTreeTile = { x: treeTile.x, y: treeTile.y };
+      u.chopTreeTile = { x: anchorTile.x, y: anchorTile.y };
+      u.attackFpW = footprintW;
+      u.attackFpH = footprintH;
       u.mode = 'move';
       u.chopCooldownMs = 0;
       u.walkAnimStartMs = performance.now();
@@ -341,12 +387,14 @@ export class KnightSystem {
       if (picked) {
         u.path = picked.path;
         u.pixelGoal = this.#chopApproachPixelGoalTopLeft(
-          treeTile.x,
-          treeTile.y,
+          anchorTile.x,
+          anchorTile.y,
           picked.n.x,
           picked.n.y,
           worldWidthPx,
-          worldHeightPx
+          worldHeightPx,
+          footprintW,
+          footprintH
         );
       } else {
         u.path = [];
@@ -365,11 +413,14 @@ export class KnightSystem {
    * @param {number} worldW
    * @param {number} worldH
    */
-  #chopApproachPixelGoalTopLeft(treeTx, treeTy, nx, ny, worldW, worldH) {
+  #chopApproachPixelGoalTopLeft(treeTx, treeTy, nx, ny, worldW, worldH, fpW = TILE_SIZE, fpH = TILE_SIZE) {
     const T = TILE_SIZE;
     const K = KNIGHT_W;
     const ox = nx - treeTx;
     const oy = ny - treeTy;
+    if (fpW !== TILE_SIZE || fpH !== TILE_SIZE) {
+      return this.#clampTopLeftToWorld(nx + (T - K) / 2, ny + (T - KNIGHT_H) / 2, worldW, worldH);
+    }
     let x;
     let y;
     if (ox === -T && oy === 0) {
@@ -413,12 +464,12 @@ export class KnightSystem {
    * @param {number} worldW
    * @param {number} worldH
    */
-  #seekTowardChopTree(u, tree, state, dtMs, worldW, worldH) {
+  #seekTowardChopTree(u, tree, fpW, fpH, state, dtMs, worldW, worldH) {
     const t = tree;
     const cx = u.x + KNIGHT_HALF_W;
     const cy = u.y + KNIGHT_HALF_H;
-    const px = Math.max(t.x, Math.min(cx, t.x + TILE_SIZE));
-    const py = Math.max(t.y, Math.min(cy, t.y + TILE_SIZE));
+    const px = Math.max(t.x, Math.min(cx, t.x + fpW));
+    const py = Math.max(t.y, Math.min(cy, t.y + fpH));
     let dx = px - cx;
     let dy = py - cy;
     const len = Math.hypot(dx, dy);
@@ -456,9 +507,18 @@ export class KnightSystem {
       if (u.mode === 'chop' && u.chopTreeTile) {
         const key = `${u.chopTreeTile.x}:${u.chopTreeTile.y}`;
         const cell = state.get(key);
-        if (!cell || !cell.isRenderable || !isTreeSpriteType(cell.spriteType)) {
+        const fpW = u.attackFpW;
+        const fpH = u.attackFpH;
+        if (
+          !cell ||
+          !cell.isRenderable ||
+          cell.entity?.hp == null ||
+          !this.#canMeleeAnchorCell(cell, u.ownerUserId)
+        ) {
           u.mode = 'idle';
           u.chopTreeTile = null;
+          u.attackFpW = TILE_SIZE;
+          u.attackFpH = TILE_SIZE;
           u.path = [];
           u.pixelGoal = null;
           u.walkAnimStartMs = null;
@@ -467,7 +527,7 @@ export class KnightSystem {
           continue;
         }
 
-        if (!this.#isKnightTouchingTreeAabb(u, u.chopTreeTile.x, u.chopTreeTile.y)) {
+        if (!this.#isKnightTouchingStructureAabb(u, u.chopTreeTile.x, u.chopTreeTile.y, fpW, fpH)) {
           u.mode = 'move';
           u.path = [];
           u.pixelGoal = null;
@@ -479,12 +539,12 @@ export class KnightSystem {
         u.chopCooldownMs += dtMs;
         if (u.chopCooldownMs >= CHOP_HIT_INTERVAL_MS) {
           u.chopCooldownMs = 0;
-          this.#deleteTreeAt(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId);
+          this.#applyChopHit(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId);
         }
 
         this.#updateFaceTowardWorldPoint(u, {
-          x: u.chopTreeTile.x + TILE_SIZE / 2,
-          y: u.chopTreeTile.y + TILE_SIZE / 2,
+          x: u.chopTreeTile.x + fpW / 2,
+          y: u.chopTreeTile.y + fpH / 2,
         });
         continue;
       }
@@ -492,11 +552,13 @@ export class KnightSystem {
       if (u.mode === 'move' && u.chopTreeTile) {
         const t = u.chopTreeTile;
         const cell = state.get(`${t.x}:${t.y}`);
+        const fpW = u.attackFpW;
+        const fpH = u.attackFpH;
         if (
           cell &&
           cell.isRenderable &&
-          isTreeSpriteType(cell.spriteType) &&
-          this.#isKnightTouchingTreeAabb(u, t.x, t.y)
+          this.#canMeleeAnchorCell(cell, u.ownerUserId) &&
+          this.#isKnightTouchingStructureAabb(u, t.x, t.y, fpW, fpH)
         ) {
           u.path = [];
           u.pixelGoal = null;
@@ -541,19 +603,28 @@ export class KnightSystem {
       if (u.path.length === 0 && u.mode === 'move' && u.chopTreeTile && !u.pixelGoal) {
         const t = u.chopTreeTile;
         const cell = state.get(`${t.x}:${t.y}`);
-        if (cell && cell.isRenderable && isTreeSpriteType(cell.spriteType) && this.#isKnightTouchingTreeAabb(u, t.x, t.y)) {
+        const fpW = u.attackFpW;
+        const fpH = u.attackFpH;
+        if (
+          cell &&
+          cell.isRenderable &&
+          this.#canMeleeAnchorCell(cell, u.ownerUserId) &&
+          this.#isKnightTouchingStructureAabb(u, t.x, t.y, fpW, fpH)
+        ) {
           u.mode = 'chop';
           u.chopCooldownMs = 0;
           u.walkAnimStartMs = null;
           u.idleNextAltAt = null;
-        } else if (!cell || !isTreeSpriteType(cell.spriteType)) {
+        } else if (!cell || cell.entity?.hp == null || !this.#canMeleeAnchorCell(cell, u.ownerUserId)) {
           u.chopTreeTile = null;
+          u.attackFpW = TILE_SIZE;
+          u.attackFpH = TILE_SIZE;
           u.mode = 'idle';
           u.walkAnimStartMs = null;
           u.idleNextAltAt = null;
           u.faceLeft = false;
         } else {
-          this.#seekTowardChopTree(u, t, state, dtMs, worldWidthPx, worldHeightPx);
+          this.#seekTowardChopTree(u, t, fpW, fpH, state, dtMs, worldWidthPx, worldHeightPx);
         }
         continue;
       }
@@ -843,23 +914,36 @@ export class KnightSystem {
   }
 
   /**
-   * Рыцарь вплотную к клетке дерева: по хитбоксу, без привязки к сетке направлений.
+   * Дерево или чужое здание с HP — можно бить с этого якоря.
+   *
+   * @param {import('../../engine/state/cell.js').Cell} cell
+   * @param {string} knightOwnerId
+   */
+  #canMeleeAnchorCell(cell, knightOwnerId) {
+    if (!cell.entity || cell.entity.hp == null) {
+      return false;
+    }
+    if (isTreeSpriteType(cell.spriteType)) {
+      return true;
+    }
+    return (
+      cell.spriteType !== 'knight' &&
+      !!cell.ownerUserId &&
+      cell.ownerUserId !== knightOwnerId
+    );
+  }
+
+  /**
+   * Рыцарь вплотную к прямоугольнику цели (дерево или отпечаток здания).
    *
    * @param {KnightUnit} u
-   * @param {number} treeTx левый верх тайла дерева
-   * @param {number} treeTy
+   * @param {number} originTx левый верх якоря
+   * @param {number} originTy
+   * @param {number} fpW
+   * @param {number} fpH
    */
-  #isKnightTouchingTreeAabb(u, treeTx, treeTy) {
-    const d = aabbOuterDistance(
-      u.x,
-      u.y,
-      KNIGHT_W,
-      KNIGHT_H,
-      treeTx,
-      treeTy,
-      TILE_SIZE,
-      TILE_SIZE
-    );
+  #isKnightTouchingStructureAabb(u, originTx, originTy, fpW, fpH) {
+    const d = aabbOuterDistance(u.x, u.y, KNIGHT_W, KNIGHT_H, originTx, originTy, fpW, fpH);
     return d <= CHOP_TOUCH_GAP_PX;
   }
 

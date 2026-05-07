@@ -1,3 +1,4 @@
+import { TREE_MAX_HP } from '../../constants/structure-hp.js';
 import { tiles } from '../../constants/tiles.js';
 
 export const treeTypes = {
@@ -16,5 +17,11 @@ export const treeTypes = {
 export class Tree {
   constructor({ treeType }) {
     this.treeType = treeType;
+    this.hp = TREE_MAX_HP;
+    this.maxHp = TREE_MAX_HP;
+    /** Деревья не участвуют в регенерации HP. */
+    this.regenerates = false;
+    /** Время последнего урона (`performance.now()`); для полоски HP. */
+    this.lastDamagedAtMs = 0;
   }
 }

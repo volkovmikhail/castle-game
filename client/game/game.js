@@ -21,6 +21,7 @@ import {
   SHOP_WOOD_PER_ONE_GOLD,
   SHOP_WOOD_PER_SPENT_GOLD,
 } from '../constants/shop-exchange.js';
+import { STRUCTURE_DAMAGE_PER_CHOP, BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
 import { cloneStartingResources, WOOD_PER_KNIGHT_TREE_CHOP } from '../constants/resources.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import { TREE_REGROW_INTERVAL_MS } from '../constants/forest-regrowth.js';
@@ -32,6 +33,8 @@ import {
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { tryRegrowOneTree } from './forest-regrowth.js';
+import { isTreeSpriteType } from '../common/grid-path.js';
+import { createBuildingHp } from './entities/building-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
 
@@ -90,17 +93,82 @@ export class Game {
     this.localPlayer = PLAYER_PROFILES[0];
 
     this.#knightSystem = new KnightSystem({
-      deleteTreeAt: (x, y, ownerUserId) => {
-        this.stateManager.deleteCell({ x, y });
-        const resources = this.#playerResources.get(ownerUserId);
+      applyChopHit: (anchorTx, anchorTy, knightOwnerId) => {
+        this.#applyChopHit(anchorTx, anchorTy, knightOwnerId);
+      },
+    });
+  }
+
+  /**
+   * Урон по дереву или вражескому зданию (якорь — левый верх отпечатка).
+   *
+   * @param {number} anchorTx
+   * @param {number} anchorTy
+   * @param {string} knightOwnerId
+   */
+  #applyChopHit(anchorTx, anchorTy, knightOwnerId) {
+    const state = this.stateManager.getState();
+    const cell = state.get(`${anchorTx}:${anchorTy}`);
+    if (!cell?.entity || typeof cell.entity.hp !== 'number') {
+      return;
+    }
+
+    const ent = cell.entity;
+
+    if (isTreeSpriteType(cell.spriteType)) {
+      ent.hp -= STRUCTURE_DAMAGE_PER_CHOP;
+      ent.lastDamagedAtMs = performance.now();
+      if (ent.hp <= 0) {
+        this.stateManager.deleteCell({ x: anchorTx, y: anchorTy });
+        const resources = this.#playerResources.get(knightOwnerId);
         if (resources) {
           resources.wood += WOOD_PER_KNIGHT_TREE_CHOP;
-          if (ownerUserId === this.localPlayer.userId) {
+          if (knightOwnerId === this.localPlayer.userId) {
             this.ui.setResources(resources);
           }
         }
-      },
-    });
+      }
+      return;
+    }
+
+    if (cell.spriteType === 'knight' || !cell.ownerUserId || cell.ownerUserId === knightOwnerId) {
+      return;
+    }
+
+    ent.hp -= STRUCTURE_DAMAGE_PER_CHOP;
+    ent.lastDamagedAtMs = performance.now();
+    if (ent.hp <= 0) {
+      const tileData = tiles[cell.spriteType];
+      if (tileData) {
+        this.stateManager.deleteFootprint({ x: anchorTx, y: anchorTy, tileData });
+      }
+    }
+  }
+
+  /**
+   * Постепенное восстановление HP зданий (деревья не регенерируются).
+   *
+   * @param {number} dtMs
+   */
+  #regenerateBuildingHp(dtMs) {
+    const state = this.stateManager.getState();
+    /** @type {Set<object>} */
+    const seen = new Set();
+    const rate = BUILDING_REGEN_HP_PER_SECOND / 1000;
+    for (const [, cell] of state.entries()) {
+      const ent = cell.entity;
+      if (!ent?.regenerates || typeof ent.hp !== 'number') {
+        continue;
+      }
+      if (seen.has(ent)) {
+        continue;
+      }
+      seen.add(ent);
+      if (ent.hp >= ent.maxHp) {
+        continue;
+      }
+      ent.hp = Math.min(ent.maxHp, ent.hp + rate * dtMs);
+    }
   }
 
   init() {
@@ -213,6 +281,7 @@ export class Game {
     }
 
     this.#processProgressJobs();
+    this.#regenerateBuildingHp(timeStep);
 
     const right = this.controls.consumeRightClickWorld();
     if (right) {
@@ -309,6 +378,7 @@ export class Game {
                     y: ty,
                     tileData,
                     ownerUserId: this.localPlayer.userId,
+                    entity: createBuildingHp(),
                   });
                   if (selectedBuilding === 'market') {
                     this.#registerMarketConstruction(tx, ty);
@@ -559,6 +629,7 @@ export class Game {
         y: playerProfile.castleStart.y,
         tileData: tiles.castle,
         ownerUserId: playerProfile.userId,
+        entity: createBuildingHp(),
       });
     }
   }
@@ -612,7 +683,13 @@ export class Game {
       return;
     }
     this.stateManager.deleteCell({ x, y });
-    this.stateManager.setCell({ x, y, tileData, ownerUserId });
+    this.stateManager.setCell({
+      x,
+      y,
+      tileData,
+      ownerUserId,
+      entity: createBuildingHp(),
+    });
   }
 
   /**
