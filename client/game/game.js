@@ -7,7 +7,7 @@ import {
   getPlacementCostEntry,
   subtractResources,
 } from '../constants/economy.js';
-import { KNIGHT_SPRITE_SIZE } from '../constants/knight-atlas.js';
+import { KNIGHT_SPRITE_HEIGHT, KNIGHT_SPRITE_WIDTH } from '../constants/knight-atlas.js';
 import { PLAYER_PROFILES } from '../constants/players.js';
 import {
   FARM_GROWTH_STAGE_MS,
@@ -175,13 +175,7 @@ export class Game {
       localPlayerUserId: this.localPlayer.userId,
     });
 
-    this.#knightSystem.render(
-      this.renderer.ctx,
-      this.controls.getScrollOffset(),
-      this.knightImage,
-      showPlayerIndicators,
-      this.localPlayer.userId
-    );
+    this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
 
     const marqueeDraft = this.controls.getMarqueeDraftWorldRect();
     if (marqueeDraft) {
@@ -200,6 +194,13 @@ export class Game {
     }
 
     this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
+
+    this.#knightSystem.renderLocalPlayerTrianglesOnTop(
+      this.renderer.ctx,
+      this.controls.getScrollOffset(),
+      showPlayerIndicators,
+      this.localPlayer.userId
+    );
   }
 
   update(timeStep) {
@@ -262,13 +263,12 @@ export class Game {
                 this.ui.showToast(affordError);
               } else {
                 this.#payForPlacement(KNIGHT_TOOL_KEY);
-                const half = KNIGHT_SPRITE_SIZE / 2;
-                let spawnX = worldPx - half;
-                let spawnY = worldPy - half;
+                let spawnX = worldPx - KNIGHT_SPRITE_WIDTH / 2;
+                let spawnY = worldPy - KNIGHT_SPRITE_HEIGHT / 2;
                 const minX = tx;
                 const minY = ty;
-                const maxX = tx + TILE_SIZE - KNIGHT_SPRITE_SIZE;
-                const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_SIZE;
+                const maxX = tx + TILE_SIZE - KNIGHT_SPRITE_WIDTH;
+                const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_HEIGHT;
                 spawnX = Math.max(minX, Math.min(maxX, spawnX));
                 spawnY = Math.max(minY, Math.min(maxY, spawnY));
                 this.#knightSystem.spawn({

@@ -16,7 +16,8 @@ import {
   KNIGHT_IDLE_GAP_MAX_MS,
   KNIGHT_IDLE_GAP_MIN_MS,
   KNIGHT_RUN_FRAME_MS,
-  KNIGHT_SPRITE_SIZE,
+  KNIGHT_SPRITE_HEIGHT,
+  KNIGHT_SPRITE_WIDTH,
 } from '../../constants/knight-atlas.js';
 import {
   PLAYER_BUILDING_TRIANGLE_GAP_PX,
@@ -55,6 +56,13 @@ function aabbOuterDistance(ax, ay, aw, ah, bx, by, bw, bh) {
   const dy = Math.max(0, Math.max(by - (ay + ah), ay - (by + bh)));
   return Math.hypot(dx, dy);
 }
+
+const KNIGHT_W = KNIGHT_SPRITE_WIDTH;
+const KNIGHT_H = KNIGHT_SPRITE_HEIGHT;
+const KNIGHT_HALF_W = KNIGHT_W / 2;
+const KNIGHT_HALF_H = KNIGHT_H / 2;
+// Рамка выделения: на столько пикселей уже по горизонтали с каждой стороны.
+const KNIGHT_SELECTION_LR_INSET_PX = 2;
 
 /** @typedef {'idle' | 'move' | 'chop'} KnightMode */
 
@@ -108,7 +116,7 @@ class KnightUnit {
 
   /** @returns {{ x: number; y: number }} */
   center() {
-    return { x: this.x + KNIGHT_SPRITE_SIZE / 2, y: this.y + KNIGHT_SPRITE_SIZE / 2 };
+    return { x: this.x + KNIGHT_HALF_W, y: this.y + KNIGHT_HALF_H };
   }
 
   /** @returns {{ tx: number; ty: number }} */
@@ -169,8 +177,8 @@ export class KnightSystem {
       if (
         worldPx >= u.x &&
         worldPy >= u.y &&
-        worldPx < u.x + KNIGHT_SPRITE_SIZE &&
-        worldPy < u.y + KNIGHT_SPRITE_SIZE
+        worldPx < u.x + KNIGHT_W &&
+        worldPy < u.y + KNIGHT_H
       ) {
         if (!shiftKey) {
           this.#selectedIds.clear();
@@ -208,12 +216,13 @@ export class KnightSystem {
     const maxX = Math.max(wx0, wx1);
     const maxY = Math.max(wy0, wy1);
     this.#selectedIds.clear();
-    const w = KNIGHT_SPRITE_SIZE;
+    const w = KNIGHT_W;
+    const h = KNIGHT_H;
     for (const u of this.#units) {
       if (u.ownerUserId !== localOwnerId) {
         continue;
       }
-      const overlaps = u.x < maxX && u.x + w > minX && u.y < maxY && u.y + w > minY;
+      const overlaps = u.x < maxX && u.x + w > minX && u.y < maxY && u.y + h > minY;
       if (overlaps) {
         this.#selectedIds.add(u.id);
       }
@@ -262,8 +271,8 @@ export class KnightSystem {
         u.walkAnimStartMs = performance.now();
         u.idleNextAltAt = null;
         u.pixelGoal = this.#clampTopLeftToWorld(
-          worldPx - KNIGHT_SPRITE_SIZE / 2,
-          worldPy - KNIGHT_SPRITE_SIZE / 2,
+          worldPx - KNIGHT_HALF_W,
+          worldPy - KNIGHT_HALF_H,
           worldWidthPx,
           worldHeightPx
         );
@@ -344,35 +353,35 @@ export class KnightSystem {
    */
   #chopApproachPixelGoalTopLeft(treeTx, treeTy, nx, ny, worldW, worldH) {
     const T = TILE_SIZE;
-    const K = KNIGHT_SPRITE_SIZE;
+    const K = KNIGHT_W;
     const ox = nx - treeTx;
     const oy = ny - treeTy;
     let x;
     let y;
     if (ox === -T && oy === 0) {
       x = treeTx - K;
-      y = treeTy + (T - K) / 2;
+      y = treeTy + (T - KNIGHT_H) / 2;
     } else if (ox === T && oy === 0) {
       x = treeTx + T;
-      y = treeTy + (T - K) / 2;
+      y = treeTy + (T - KNIGHT_H) / 2;
     } else if (ox === 0 && oy === -T) {
       x = treeTx + (T - K) / 2;
-      y = treeTy - K;
+      y = treeTy - KNIGHT_H;
     } else if (ox === 0 && oy === T) {
       x = treeTx + (T - K) / 2;
       y = treeTy + T;
     } else if (ox === -T && oy === -T) {
       x = treeTx - K;
-      y = treeTy - K;
+      y = treeTy - KNIGHT_H;
     } else if (ox === T && oy === -T) {
       x = treeTx + T - K;
       y = treeTy - K;
     } else if (ox === -T && oy === T) {
       x = treeTx - K;
-      y = treeTy + T - K;
+      y = treeTy + T - KNIGHT_H;
     } else if (ox === T && oy === T) {
       x = treeTx + T - K;
-      y = treeTy + T - K;
+      y = treeTy + T - KNIGHT_H;
     } else {
       x = nx + (T - K) / 2;
       y = ny + (T - K) / 2;
@@ -392,9 +401,8 @@ export class KnightSystem {
    */
   #seekTowardChopTree(u, tree, state, dtMs, worldW, worldH) {
     const t = tree;
-    const K = KNIGHT_SPRITE_SIZE;
-    const cx = u.x + K / 2;
-    const cy = u.y + K / 2;
+    const cx = u.x + KNIGHT_HALF_W;
+    const cy = u.y + KNIGHT_HALF_H;
     const px = Math.max(t.x, Math.min(cx, t.x + TILE_SIZE));
     const py = Math.max(t.y, Math.min(cy, t.y + TILE_SIZE));
     let dx = px - cx;
@@ -408,7 +416,7 @@ export class KnightSystem {
     const step = MOVE_SPEED_PX_PER_MS * dtMs * 2.25;
     const ncx = cx + dx * step;
     const ncy = cy + dy * step;
-    const ntx = this.#clampTopLeftToWorld(ncx - K / 2, ncy - K / 2, worldW, worldH);
+    const ntx = this.#clampTopLeftToWorld(ncx - KNIGHT_HALF_W, ncy - KNIGHT_HALF_H, worldW, worldH);
     if (this.#isKnightWalkable(state, ntx.x, ntx.y, worldW, worldH)) {
       u.x = ntx.x;
       u.y = ntx.y;
@@ -492,13 +500,13 @@ export class KnightSystem {
 
       if (u.path.length > 0) {
         const next = u.path[0];
-        const targetX = next.x + TILE_SIZE / 2 - KNIGHT_SPRITE_SIZE / 2;
-        const targetY = next.y + TILE_SIZE / 2 - KNIGHT_SPRITE_SIZE / 2;
+        const targetX = next.x + TILE_SIZE / 2 - KNIGHT_HALF_W;
+        const targetY = next.y + TILE_SIZE / 2 - KNIGHT_HALF_H;
         this.#moveToward(u, targetX, targetY, dtMs);
 
         const dist = Math.hypot(
-          u.x + KNIGHT_SPRITE_SIZE / 2 - (next.x + TILE_SIZE / 2),
-          u.y + KNIGHT_SPRITE_SIZE / 2 - (next.y + TILE_SIZE / 2)
+          u.x + KNIGHT_HALF_W - (next.x + TILE_SIZE / 2),
+          u.y + KNIGHT_HALF_H - (next.y + TILE_SIZE / 2)
         );
         if (dist < ARRIVE_EPS_PX) {
           u.x = targetX;
@@ -589,10 +597,10 @@ export class KnightSystem {
     if (!g) {
       return;
     }
-    const ccx = u.x + KNIGHT_SPRITE_SIZE / 2;
-    const ccy = u.y + KNIGHT_SPRITE_SIZE / 2;
-    const gcx = g.x + KNIGHT_SPRITE_SIZE / 2;
-    const gcy = g.y + KNIGHT_SPRITE_SIZE / 2;
+    const ccx = u.x + KNIGHT_HALF_W;
+    const ccy = u.y + KNIGHT_HALF_H;
+    const gcx = g.x + KNIGHT_HALF_W;
+    const gcy = g.y + KNIGHT_HALF_H;
 
     while (u.path.length >= 2) {
       const p1 = u.path[1];
@@ -616,8 +624,8 @@ export class KnightSystem {
    * @param {number} worldHeightPx
    */
   #clampTopLeftToWorld(x, y, worldWidthPx, worldHeightPx) {
-    const maxX = worldWidthPx - KNIGHT_SPRITE_SIZE;
-    const maxY = worldHeightPx - KNIGHT_SPRITE_SIZE;
+    const maxX = worldWidthPx - KNIGHT_W;
+    const maxY = worldHeightPx - KNIGHT_H;
     return {
       x: Math.max(0, Math.min(maxX, x)),
       y: Math.max(0, Math.min(maxY, y)),
@@ -632,9 +640,10 @@ export class KnightSystem {
    * @returns {{ tx: number; ty: number }[]}
    */
   #tileOriginsUnderKnight(x, y) {
-    const w = KNIGHT_SPRITE_SIZE;
+    const w = KNIGHT_W;
+    const h = KNIGHT_H;
     const xMax = x + w - 1e-6;
-    const yMax = y + w - 1e-6;
+    const yMax = y + h - 1e-6;
     const tx0 = Math.floor(x / TILE_SIZE) * TILE_SIZE;
     const ty0 = Math.floor(y / TILE_SIZE) * TILE_SIZE;
     const tx1 = Math.floor(xMax / TILE_SIZE) * TILE_SIZE;
@@ -657,8 +666,7 @@ export class KnightSystem {
    * @param {number} worldHeightPx
    */
   #isKnightWalkable(state, x, y, worldWidthPx, worldHeightPx) {
-    const w = KNIGHT_SPRITE_SIZE;
-    if (x < 0 || y < 0 || x + w > worldWidthPx || y + w > worldHeightPx) {
+    if (x < 0 || y < 0 || x + KNIGHT_W > worldWidthPx || y + KNIGHT_H > worldHeightPx) {
       return false;
     }
     for (const { tx, ty } of this.#tileOriginsUnderKnight(x, y)) {
@@ -678,9 +686,8 @@ export class KnightSystem {
    * @param {number} worldHeightPx
    */
   #pushKnightOutOfSolids(u, state, worldWidthPx, worldHeightPx) {
-    const w = KNIGHT_SPRITE_SIZE;
-    const maxX = worldWidthPx - w;
-    const maxY = worldHeightPx - w;
+    const maxX = worldWidthPx - KNIGHT_W;
+    const maxY = worldHeightPx - KNIGHT_H;
 
     for (let iter = 0; iter < 16; iter++) {
       if (this.#isKnightWalkable(state, u.x, u.y, worldWidthPx, worldHeightPx)) {
@@ -701,14 +708,14 @@ export class KnightSystem {
       const { tx, ty } = blocked;
       let x = u.x;
       let y = u.y;
-      const overlapX = Math.min(x + w, tx + TILE_SIZE) - Math.max(x, tx);
-      const overlapY = Math.min(y + w, ty + TILE_SIZE) - Math.max(y, ty);
+      const overlapX = Math.min(x + KNIGHT_W, tx + TILE_SIZE) - Math.max(x, tx);
+      const overlapY = Math.min(y + KNIGHT_H, ty + TILE_SIZE) - Math.max(y, ty);
       if (overlapX <= 0 || overlapY <= 0) {
         break;
       }
 
-      const kcx = x + w / 2;
-      const kcy = y + w / 2;
+      const kcx = x + KNIGHT_HALF_W;
+      const kcy = y + KNIGHT_HALF_H;
       const tcx = tx + TILE_SIZE / 2;
       const tcy = ty + TILE_SIZE / 2;
 
@@ -731,9 +738,10 @@ export class KnightSystem {
   #resolveKnightOverlaps(state, worldWidthPx, worldHeightPx) {
     const units = this.#units;
     const minCenterDist = KNIGHT_COLLISION_RADIUS * 2;
-    const hs = KNIGHT_SPRITE_SIZE / 2;
-    const maxX = worldWidthPx - KNIGHT_SPRITE_SIZE;
-    const maxY = worldHeightPx - KNIGHT_SPRITE_SIZE;
+    const hsx = KNIGHT_HALF_W;
+    const hsy = KNIGHT_HALF_H;
+    const maxX = worldWidthPx - KNIGHT_W;
+    const maxY = worldHeightPx - KNIGHT_H;
 
     for (let round = 0; round < 2; round++) {
       for (let iter = 0; iter < 6; iter++) {
@@ -741,10 +749,10 @@ export class KnightSystem {
           for (let j = i + 1; j < units.length; j++) {
             const a = units[i];
             const b = units[j];
-            const acx = a.x + hs;
-            const acy = a.y + hs;
-            const bcx = b.x + hs;
-            const bcy = b.y + hs;
+            const acx = a.x + hsx;
+            const acy = a.y + hsy;
+            const bcx = b.x + hsx;
+            const bcy = b.y + hsy;
             let dx = bcx - acx;
             let dy = bcy - acy;
             const dist = Math.hypot(dx, dy) || 1;
@@ -831,8 +839,8 @@ export class KnightSystem {
     const d = aabbOuterDistance(
       u.x,
       u.y,
-      KNIGHT_SPRITE_SIZE,
-      KNIGHT_SPRITE_SIZE,
+      KNIGHT_W,
+      KNIGHT_H,
       treeTx,
       treeTy,
       TILE_SIZE,
@@ -848,10 +856,10 @@ export class KnightSystem {
    * @param {number} dtMs
    */
   #moveToward(u, tx, ty, dtMs) {
-    const cx = u.x + KNIGHT_SPRITE_SIZE / 2;
-    const cy = u.y + KNIGHT_SPRITE_SIZE / 2;
-    const tcx = tx + KNIGHT_SPRITE_SIZE / 2;
-    const tcy = ty + KNIGHT_SPRITE_SIZE / 2;
+    const cx = u.x + KNIGHT_HALF_W;
+    const cy = u.y + KNIGHT_HALF_H;
+    const tcx = tx + KNIGHT_HALF_W;
+    const tcy = ty + KNIGHT_HALF_H;
     const dx = tcx - cx;
     const dy = tcy - cy;
     const len = Math.hypot(dx, dy) || 1;
@@ -873,8 +881,8 @@ export class KnightSystem {
    * @param {{ x: number; y: number }} targetWorld
    */
   #updateFaceTowardWorldPoint(u, targetWorld) {
-    const kcx = u.x + KNIGHT_SPRITE_SIZE / 2;
-    const kcy = u.y + KNIGHT_SPRITE_SIZE / 2;
+    const kcx = u.x + KNIGHT_HALF_W;
+    const kcy = u.y + KNIGHT_HALF_H;
     const dx = targetWorld.x - kcx;
     const dy = targetWorld.y - kcy;
     if (Math.abs(dx) >= Math.abs(dy)) {
@@ -883,23 +891,25 @@ export class KnightSystem {
   }
 
   /**
+   * Спрайты и рамка выделения. Треугольник владельца — см. `renderLocalPlayerTrianglesOnTop`.
+   *
    * @param {CanvasRenderingContext2D} ctx
    * @param {{ offsetX: number; offsetY: number }} scrollOffset
    * @param {CanvasImageSource} knightImage
-   * @param {boolean} showPlayerIndicators
-   * @param {string} localPlayerUserId
    */
-  render(ctx, scrollOffset, knightImage, showPlayerIndicators = false, localPlayerUserId = '') {
+  render(ctx, scrollOffset, knightImage) {
     const { offsetX, offsetY } = scrollOffset;
 
     for (const u of this.#units) {
       const frame = this.#pickFrame(u);
       const screenX = u.x + offsetX;
       const screenY = u.y + offsetY;
+      const drawX = Math.round(screenX);
+      const drawY = Math.round(screenY);
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       if (u.faceLeft) {
-        ctx.translate(screenX + KNIGHT_SPRITE_SIZE, screenY);
+        ctx.translate(drawX + KNIGHT_W, drawY);
         ctx.scale(-1, 1);
         ctx.drawImage(
           knightImage,
@@ -909,8 +919,8 @@ export class KnightSystem {
           frame.sh,
           0,
           0,
-          KNIGHT_SPRITE_SIZE,
-          KNIGHT_SPRITE_SIZE
+          KNIGHT_W,
+          KNIGHT_H
         );
       } else {
         ctx.drawImage(
@@ -919,10 +929,10 @@ export class KnightSystem {
           frame.sy,
           frame.sw,
           frame.sh,
-          screenX,
-          screenY,
-          KNIGHT_SPRITE_SIZE,
-          KNIGHT_SPRITE_SIZE
+          drawX,
+          drawY,
+          KNIGHT_W,
+          KNIGHT_H
         );
       }
       ctx.restore();
@@ -930,15 +940,13 @@ export class KnightSystem {
       if (this.#selectedIds.has(u.id)) {
         ctx.save();
         ctx.fillStyle = 'rgb(120, 220, 255)';
-        // Snap to device pixels to avoid anti-aliased blur on moving units.
-        const facingOffsetX = u.faceLeft ? 1 : 0;
-        const sx = Math.round(u.x + offsetX) + facingOffsetX;
-        const sy = Math.round(u.y + offsetY);
-        const w = KNIGHT_SPRITE_SIZE;
-        const L = sx;
+        // Snap to pixels and build border from actual 9x8 sprite bounds.
+        const sx = drawX;
+        const sy = drawY;
+        const L = sx - 1 + KNIGHT_SELECTION_LR_INSET_PX;
         const T = sy - 1;
-        const R = sx + w - 2;
-        const B = sy + w;
+        const R = sx + KNIGHT_W - KNIGHT_SELECTION_LR_INSET_PX;
+        const B = sy + KNIGHT_H;
         const barW = R - L + 1;
         const barH = B - T + 1;
         ctx.fillRect(L, T, barW, 1);
@@ -947,10 +955,27 @@ export class KnightSystem {
         ctx.fillRect(R, T, 1, barH);
         ctx.restore();
       }
+    }
+  }
 
-      if (showPlayerIndicators && u.ownerUserId === localPlayerUserId) {
-        this.#drawPlayerTriangle(ctx, screenX, screenY, PLAYER_INDICATOR_COLOR);
-      }
+  /**
+   * Красный треугольник владельца — отдельным проходом в конце кадра, чтобы был поверх спрайтов и эффектов.
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ offsetX: number; offsetY: number }} scrollOffset
+   * @param {boolean} showPlayerIndicators
+   * @param {string} localPlayerUserId
+   */
+  renderLocalPlayerTrianglesOnTop(ctx, scrollOffset, showPlayerIndicators, localPlayerUserId) {
+    if (!showPlayerIndicators || !localPlayerUserId) return;
+    const { offsetX, offsetY } = scrollOffset;
+    for (const u of this.#units) {
+      if (u.ownerUserId !== localPlayerUserId) continue;
+      const screenX = u.x + offsetX;
+      const screenY = u.y + offsetY;
+      const drawX = Math.round(screenX);
+      const drawY = Math.round(screenY);
+      this.#drawPlayerTriangle(ctx, drawX, drawY, PLAYER_INDICATOR_COLOR);
     }
   }
 
@@ -961,7 +986,8 @@ export class KnightSystem {
    * @param {string} color
    */
   #drawPlayerTriangle(ctx, screenX, screenY, color) {
-    const cx = Math.round(screenX + KNIGHT_SPRITE_SIZE / 2);
+    // У спрайта нечётная ширина: центр по сетке — floor(+half), не round(+half), иначе смещение на 1px вправо.
+    const cx = Math.floor(screenX + KNIGHT_HALF_W);
     const tipY = Math.round(screenY - PLAYER_BUILDING_TRIANGLE_GAP_PX);
     const topY = tipY - PLAYER_BUILDING_TRIANGLE_HEIGHT_PX;
     const hb = PLAYER_BUILDING_TRIANGLE_HALF_BASE_PX;
