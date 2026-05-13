@@ -1,5 +1,5 @@
 import { Random } from '../common/random.js';
-import { isTreeSpriteType } from '../common/grid-path.js';
+import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-path.js';
 import { TREE_REGROW_BUILDING_BUFFER_TILES } from '../constants/forest-regrowth.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import { tiles } from '../constants/tiles.js';
@@ -99,6 +99,9 @@ function collectBuildingTileCoords(state) {
     if (isTreeSpriteType(cell.spriteType)) {
       continue;
     }
+    if (isForestFloorDecalSpriteType(cell.spriteType)) {
+      continue;
+    }
     const [bx, by] = key.split(':').map(Number);
     out.push({
       ti: Math.floor(bx / TILE_SIZE),
@@ -154,7 +157,8 @@ function canPlaceTreeFootprint(
       if (isInsideCastleNoTreeMargin(cx, cy)) {
         return false;
       }
-      if (state.has(`${cx}:${cy}`)) {
+      const occ = state.get(`${cx}:${cy}`);
+      if (occ && !isForestFloorDecalSpriteType(occ.spriteType)) {
         return false;
       }
       if (knightOccupiedTileKeys.has(`${cx}:${cy}`)) {

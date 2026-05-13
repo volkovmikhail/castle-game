@@ -10,6 +10,24 @@ export function isTreeSpriteType(spriteType) {
 }
 
 /**
+ * Остатки на земле после рубки — только картинка, рыцари проходят сквозь.
+ *
+ * @param {string} spriteType
+ * @returns {boolean}
+ */
+export function isForestFloorDecalSpriteType(spriteType) {
+  switch (spriteType) {
+    case 'flower':
+    case 'twoFlowers':
+    case 'fluff':
+    case 'fluff2':
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
  * Клетка проходима: нет занятой клетки в state (пустой мир / фон).
  * Деревья и здания блокируют.
  *
@@ -18,6 +36,9 @@ export function isTreeSpriteType(spriteType) {
  */
 export function isWalkableCell(cell) {
   if (!cell) {
+    return true;
+  }
+  if (isForestFloorDecalSpriteType(cell.spriteType)) {
     return true;
   }
   if (isTreeSpriteType(cell.spriteType)) {

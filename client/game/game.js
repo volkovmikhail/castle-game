@@ -32,8 +32,9 @@ import {
 } from '../constants/world.js';
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
+import { Random } from '../common/random.js';
 import { tryRegrowOneTree } from './forest-regrowth.js';
-import { isTreeSpriteType } from '../common/grid-path.js';
+import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-path.js';
 import { createBuildingHp } from './entities/building-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
@@ -119,12 +120,28 @@ export class Game {
       ent.hp -= STRUCTURE_DAMAGE_PER_CHOP;
       ent.lastDamagedAtMs = performance.now();
       if (ent.hp <= 0) {
+        const spriteType = cell.spriteType;
+        const isSpruce = spriteType.toLowerCase().includes('spruce');
         this.stateManager.deleteCell({ x: anchorTx, y: anchorTy });
         const resources = this.#playerResources.get(knightOwnerId);
         if (resources) {
           resources.wood += WOOD_PER_KNIGHT_TREE_CHOP;
           if (knightOwnerId === this.localPlayer.userId) {
             this.ui.setResources(resources);
+          }
+        }
+        const roll = Random.getRandomFromRange(0, 2);
+        if (roll > 0) {
+          const decoKey = isSpruce
+            ? roll === 1
+              ? 'flower'
+              : 'twoFlowers'
+            : roll === 1
+              ? 'fluff'
+              : 'fluff2';
+          const decoTile = tiles[decoKey];
+          if (decoTile) {
+            this.stateManager.setCell({ x: anchorTx, y: anchorTy, tileData: decoTile, entity: null });
           }
         }
       }
@@ -537,7 +554,7 @@ export class Game {
         const checkY = y + iy * TILE_SIZE;
 
         const cell = state.get(`${checkX}:${checkY}`);
-        if (cell) {
+        if (cell && !isForestFloorDecalSpriteType(cell.spriteType)) {
           return cell;
         }
       }
