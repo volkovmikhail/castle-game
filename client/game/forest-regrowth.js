@@ -1,5 +1,6 @@
 import { Random } from '../common/random.js';
 import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-path.js';
+import { MID_TREE_TILE_KEY_TO_BIG, SAPLING_TILE_KEY_TO_MATURE } from '../constants/forest-sapling.js';
 import { TREE_REGROW_BUILDING_BUFFER_TILES } from '../constants/forest-regrowth.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import { tiles } from '../constants/tiles.js';
@@ -271,4 +272,90 @@ export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx, knig
   }
 
   return false;
+}
+
+/**
+ * Одно «молодое» дерево/куст (bush, twoBushes, littleTree, twoLittleTrees) заменяется
+ * на взрослый вид; интервал вызова — тот же, что у `tryRegrowOneTree`.
+ *
+ * @param {import('../engine/state/state-manager.js').StateManager} stateManager
+ * @param {Set<string>} knightOccupiedTileKeys
+ * @returns {boolean}
+ */
+export function tryMatureOneSapling(stateManager, knightOccupiedTileKeys) {
+  const state = stateManager.getState();
+  /** @type {{ x: number; y: number; spriteType: string }[]} */
+  const anchors = [];
+
+  for (const [key, cell] of state.entries()) {
+    if (!cell.isRenderable || typeof cell.entity?.hp !== 'number') {
+      continue;
+    }
+    if (!SAPLING_TILE_KEY_TO_MATURE[cell.spriteType]) {
+      continue;
+    }
+    if (knightOccupiedTileKeys.has(key)) {
+      continue;
+    }
+    const [x, y] = key.split(':').map(Number);
+    anchors.push({ x, y, spriteType: cell.spriteType });
+  }
+
+  if (anchors.length === 0) {
+    return false;
+  }
+
+  shuffleInPlace(anchors);
+  const pick = anchors[0];
+  const matureKey = SAPLING_TILE_KEY_TO_MATURE[pick.spriteType];
+  const tileData = tiles[matureKey];
+  if (!tileData) {
+    return false;
+  }
+  const entity = new Tree({ treeType: tileData.type });
+  stateManager.setCell({ x: pick.x, y: pick.y, tileData, entity });
+  return true;
+}
+
+/**
+ * Одно дерево среднего размера (spruce, twoSpruces, tree, twoTrees) → big-вариант.
+ * Тот же интервал вызова, что у `tryRegrowOneTree`.
+ *
+ * @param {import('../engine/state/state-manager.js').StateManager} stateManager
+ * @param {Set<string>} knightOccupiedTileKeys
+ * @returns {boolean}
+ */
+export function tryMatureOneTreeToBig(stateManager, knightOccupiedTileKeys) {
+  const state = stateManager.getState();
+  /** @type {{ x: number; y: number; spriteType: string }[]} */
+  const anchors = [];
+
+  for (const [key, cell] of state.entries()) {
+    if (!cell.isRenderable || typeof cell.entity?.hp !== 'number') {
+      continue;
+    }
+    if (!MID_TREE_TILE_KEY_TO_BIG[cell.spriteType]) {
+      continue;
+    }
+    if (knightOccupiedTileKeys.has(key)) {
+      continue;
+    }
+    const [x, y] = key.split(':').map(Number);
+    anchors.push({ x, y, spriteType: cell.spriteType });
+  }
+
+  if (anchors.length === 0) {
+    return false;
+  }
+
+  shuffleInPlace(anchors);
+  const pick = anchors[0];
+  const bigKey = MID_TREE_TILE_KEY_TO_BIG[pick.spriteType];
+  const tileData = tiles[bigKey];
+  if (!tileData) {
+    return false;
+  }
+  const entity = new Tree({ treeType: tileData.type });
+  stateManager.setCell({ x: pick.x, y: pick.y, tileData, entity });
+  return true;
 }

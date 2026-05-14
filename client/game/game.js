@@ -22,7 +22,15 @@ import {
   SHOP_WOOD_PER_SPENT_GOLD,
 } from '../constants/shop-exchange.js';
 import { STRUCTURE_DAMAGE_PER_CHOP, BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
-import { cloneStartingResources, WOOD_PER_KNIGHT_TREE_CHOP } from '../constants/resources.js';
+import {
+  cloneStartingResources,
+  getKnightChopWoodForForestSprite,
+  GOLD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
+  GOLD_PER_KNIGHT_ROCK_CHOP,
+  GOLD_PER_KNIGHT_TWO_ROCKS_CHOP,
+  WOOD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
+  WOOD_PER_KNIGHT_LOGS_CHOP,
+} from '../constants/resources.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import { TREE_REGROW_INTERVAL_MS } from '../constants/forest-regrowth.js';
 import {
@@ -33,7 +41,7 @@ import {
 import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { Random } from '../common/random.js';
-import { tryRegrowOneTree } from './forest-regrowth.js';
+import { tryMatureOneSapling, tryMatureOneTreeToBig, tryRegrowOneTree } from './forest-regrowth.js';
 import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-path.js';
 import { createBuildingHp } from './entities/building-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
@@ -121,29 +129,27 @@ export class Game {
       ent.lastDamagedAtMs = performance.now();
       if (ent.hp <= 0) {
         const spriteType = cell.spriteType;
-        const isSpruce = spriteType.toLowerCase().includes('spruce');
+        const st = spriteType.toLowerCase();
         this.stateManager.deleteCell({ x: anchorTx, y: anchorTy });
         const resources = this.#playerResources.get(knightOwnerId);
         if (resources) {
-          resources.wood += WOOD_PER_KNIGHT_TREE_CHOP;
+          if (st === 'rock') {
+            resources.gold += GOLD_PER_KNIGHT_ROCK_CHOP;
+          } else if (st === 'tworocks') {
+            resources.gold += GOLD_PER_KNIGHT_TWO_ROCKS_CHOP;
+          } else if (st === 'logs') {
+            resources.wood += WOOD_PER_KNIGHT_LOGS_CHOP;
+          } else if (st === 'combineplants') {
+            resources.gold += GOLD_PER_KNIGHT_COMBINE_PLANTS_CHOP;
+            resources.wood += WOOD_PER_KNIGHT_COMBINE_PLANTS_CHOP;
+          } else {
+            resources.wood += getKnightChopWoodForForestSprite(st);
+          }
           if (knightOwnerId === this.localPlayer.userId) {
             this.ui.setResources(resources);
           }
         }
-        const roll = Random.getRandomFromRange(0, 2);
-        if (roll > 0) {
-          const decoKey = isSpruce
-            ? roll === 1
-              ? 'flower'
-              : 'twoFlowers'
-            : roll === 1
-              ? 'fluff'
-              : 'fluff2';
-          const decoTile = tiles[decoKey];
-          if (decoTile) {
-            this.stateManager.setCell({ x: anchorTx, y: anchorTy, tileData: decoTile, entity: null });
-          }
-        }
+        this.#placeForestChopFloorDecal(anchorTx, anchorTy, spriteType);
       }
       return;
     }
@@ -157,7 +163,66 @@ export class Game {
     if (ent.hp <= 0) {
       const tileData = tiles[cell.spriteType];
       if (tileData) {
-        this.stateManager.deleteFootprint({ x: anchorTx, y: anchorTy, tileData });
+        this.#replaceDestroyedBuildingFootprintWithDecals(anchorTx, anchorTy, tileData);
+      }
+    }
+  }
+
+  /**
+   * После сруба: поленья → sticks; камни без декора; остальное — как раньше (цветы/пух).
+   *
+   * @param {number} anchorTx
+   * @param {number} anchorTy
+   * @param {string} spriteType
+   */
+  #placeForestChopFloorDecal(anchorTx, anchorTy, spriteType) {
+    const st = spriteType.toLowerCase();
+    if (st === 'logs') {
+      if (tiles.sticks) {
+        this.stateManager.setCell({ x: anchorTx, y: anchorTy, tileData: tiles.sticks, entity: null });
+      }
+      return;
+    }
+    if (st === 'rock' || st === 'tworocks') {
+      return;
+    }
+    const isSpruce = st.includes('spruce');
+    const roll = Random.getRandomFromRange(0, 2);
+    if (roll > 0) {
+      const decoKey = isSpruce
+        ? roll === 1
+          ? 'flower'
+          : 'twoFlowers'
+        : roll === 1
+          ? 'fluff'
+          : 'fluff2';
+      const decoTile = tiles[decoKey];
+      if (decoTile) {
+        this.stateManager.setCell({ x: anchorTx, y: anchorTy, tileData: decoTile, entity: null });
+      }
+    }
+  }
+
+  /**
+   * Каждая клетка отпечатка: sticks или peel с вероятностью 50%.
+   *
+   * @param {number} anchorTx
+   * @param {number} anchorTy
+   * @param {{ width: number; height: number }} tileData
+   */
+  #replaceDestroyedBuildingFootprintWithDecals(anchorTx, anchorTy, tileData) {
+    const cellsWide = tileData.width / TILE_SIZE;
+    const cellsHigh = tileData.height / TILE_SIZE;
+    for (let ix = 0; ix < cellsWide; ix++) {
+      for (let iy = 0; iy < cellsHigh; iy++) {
+        const cx = anchorTx + ix * TILE_SIZE;
+        const cy = anchorTy + iy * TILE_SIZE;
+        this.stateManager.deleteCell({ x: cx, y: cy });
+        const decoKey = Random.getRandomFromRange(0, 1) === 0 ? 'sticks' : 'peel';
+        const decoTile = tiles[decoKey];
+        if (decoTile) {
+          this.stateManager.setCell({ x: cx, y: cy, tileData: decoTile, entity: null });
+        }
       }
     }
   }
@@ -295,12 +360,10 @@ export class Game {
     this.#treeRegrowAccumMs += timeStep;
     while (this.#treeRegrowAccumMs >= TREE_REGROW_INTERVAL_MS) {
       this.#treeRegrowAccumMs -= TREE_REGROW_INTERVAL_MS;
-      tryRegrowOneTree(
-        this.stateManager,
-        WORLD_WIDTH_PX,
-        WORLD_HEIGHT_PX,
-        this.#knightSystem.getOccupiedTileKeys()
-      );
+      const knightKeys = this.#knightSystem.getOccupiedTileKeys();
+      tryMatureOneSapling(this.stateManager, knightKeys);
+      tryMatureOneTreeToBig(this.stateManager, knightKeys);
+      tryRegrowOneTree(this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX, knightKeys);
     }
 
     this.#processProgressJobs();
@@ -486,7 +549,7 @@ export class Game {
 
     const blockingCell = this.#getBlockingCellInArea({ x, y, tileData });
     if (blockingCell) {
-      if (this.#isTreeSpriteType(blockingCell.spriteType)) {
+      if (isTreeSpriteType(blockingCell.spriteType)) {
         return 'Нельзя ставить здание поверх дерева. Сначала расчистите место.';
       }
       return 'Нельзя ставить здание на занятую клетку.';
@@ -528,15 +591,6 @@ export class Game {
       spriteType.startsWith('farmStage') ||
       spriteType.startsWith('house')
     );
-  }
-
-  /**
-   * @param {string} spriteType
-   * @returns {boolean}
-   */
-  #isTreeSpriteType(spriteType) {
-    const type = spriteType.toLowerCase();
-    return type.includes('tree') || type.includes('spruce');
   }
 
   /**

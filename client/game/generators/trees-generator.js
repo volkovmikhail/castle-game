@@ -1,20 +1,35 @@
 import { Random } from '../../common/random.js';
+import {
+  FOREST_SPAWN_RARE_ROLL_MAX,
+  FOREST_SPAWN_RARE_THRESHOLD,
+  FOREST_SPAWN_RARE_TILE_KEYS,
+} from '../../constants/forest-flora-spawn.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
 import { tiles } from '../../constants/tiles.js';
 import { Tree } from '../entities/tree.js';
 import { isInsideCastleNoTreeMargin } from './castle-tree-margins.js';
 
 export class TreesGenerator {
-  static #generatedTreeTypes = {
-    spruce: tiles.spruce.type,
-    twoSpruces: tiles.twoSpruces.type,
-    bigSpruce: tiles.bigSpruce.type,
-    twoBigSpruces: tiles.twoBigSpruces.type,
-    tree: tiles.tree.type,
-    twoTrees: tiles.twoTrees.type,
-    bigTree: tiles.bigTree.type,
-    twoBigTrees: tiles.twoBigTrees.type,
-  };
+  /**
+   * Первичная заливка мира: случайно средние и большие деревья (редкий пул — отдельно).
+   */
+  static #initialFillForestKeys = [
+    'spruce',
+    'twoSpruces',
+    'tree',
+    'twoTrees',
+    'bigSpruce',
+    'twoBigSpruces',
+    'bigTree',
+    'twoBigTrees',
+  ];
+
+  /**
+   * Перерост: только саженцы → дальше дозревание в `forest-regrowth`.
+   */
+  static #regrowForestKeys = ['bush', 'twoBushes', 'littleTree', 'twoLittleTrees'];
+
+  static #rareForestKeys = FOREST_SPAWN_RARE_TILE_KEYS;
 
   /**
    * @typedef {import('../../engine/state/state-manager.js').StateManager} StateManager
@@ -33,8 +48,8 @@ export class TreesGenerator {
           continue;
         }
 
-        const randomTreeType = this.#getRandomTreeType();
-        const tileData = tiles[randomTreeType];
+        const tileKey = this.pickRandomForestSpawnTileKey();
+        const tileData = tiles[tileKey];
         const cellsWide = tileData.width / TILE_SIZE;
         const cellsHigh = tileData.height / TILE_SIZE;
         let underKnight = false;
@@ -51,36 +66,45 @@ export class TreesGenerator {
           continue;
         }
 
-        const treeEntity = new Tree({ treeType: randomTreeType });
+        const treeEntity = new Tree({ treeType: tileData.type });
 
         stateManager.setCell({ x, y, tileData, entity: treeEntity });
       }
     }
   }
 
-  static #getRandomTreeType() {
-    const treeTypesArr = Object.keys(this.#generatedTreeTypes);
-
-    const randomIndex = Random.getRandomFromRange(0, treeTypesArr.length - 1);
-
-    return this.#generatedTreeTypes[treeTypesArr[randomIndex]];
+  /**
+   * Случайный ключ тайла для первичной генерации леса (редкие типы — по порогу).
+   *
+   * @returns {string}
+   */
+  static pickRandomForestSpawnTileKey() {
+    const rareRoll = Random.getRandomFromRange(0, FOREST_SPAWN_RARE_ROLL_MAX - 1);
+    if (rareRoll < FOREST_SPAWN_RARE_THRESHOLD) {
+      const i = Random.getRandomFromRange(0, this.#rareForestKeys.length - 1);
+      return this.#rareForestKeys[i];
+    }
+    const j = Random.getRandomFromRange(0, this.#initialFillForestKeys.length - 1);
+    return this.#initialFillForestKeys[j];
   }
 
   /**
-   * Ключ тайла в `tiles` для случайного типа дерева (для переростка леса).
+   * Ключ тайла для переростка леса (без камней и поленьев).
    *
    * @returns {string}
    */
   static pickRandomTreeTileKey() {
-    const treeTypesArr = Object.keys(this.#generatedTreeTypes);
-    const randomIndex = Random.getRandomFromRange(0, treeTypesArr.length - 1);
-    return treeTypesArr[randomIndex];
+    const keys = this.getTreeTileKeys();
+    const randomIndex = Random.getRandomFromRange(0, keys.length - 1);
+    return keys[randomIndex];
   }
 
   /**
+   * Типы, которые могут появиться при переростке (саженцы).
+   *
    * @returns {string[]}
    */
   static getTreeTileKeys() {
-    return Object.keys(this.#generatedTreeTypes);
+    return [...this.#regrowForestKeys];
   }
 }

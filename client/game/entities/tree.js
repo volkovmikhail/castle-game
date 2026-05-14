@@ -12,6 +12,12 @@ export const treeTypes = {
   twoBigTrees: tiles.twoBigTrees.type,
   littleTree: tiles.littleTree.type,
   twoLittleTrees: tiles.twoLittleTrees.type,
+  bush: tiles.bush.type,
+  twoBushes: tiles.twoBushes.type,
+  combinePlants: tiles.combinePlants.type,
+  rock: tiles.rock.type,
+  twoRocks: tiles.twoRocks.type,
+  logs: tiles.logs.type,
 };
 
 export class Tree {

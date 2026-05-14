@@ -6,7 +6,14 @@ import { TILE_SIZE } from '../constants/sizes.js';
  */
 export function isTreeSpriteType(spriteType) {
   const type = spriteType.toLowerCase();
-  return type.includes('tree') || type.includes('spruce');
+  return (
+    type.includes('tree') ||
+    type.includes('spruce') ||
+    type.includes('bush') ||
+    type.includes('rock') ||
+    type === 'logs' ||
+    type === 'combineplants'
+  );
 }
 
 /**
@@ -21,6 +28,8 @@ export function isForestFloorDecalSpriteType(spriteType) {
     case 'twoFlowers':
     case 'fluff':
     case 'fluff2':
+    case 'sticks':
+    case 'peel':
       return true;
     default:
       return false;
