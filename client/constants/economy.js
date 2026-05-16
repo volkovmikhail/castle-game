@@ -8,6 +8,9 @@ export const KNIGHT_TOOL_KEY = 'knight';
 /** Сарай в панели: при постройке случайно `houseBarn` или `houseBarnSide` (тот же геймплей). */
 export const BARN_TOOL_KEY = 'barn';
 
+/** Жилой дом в панели: случайно `house` / `houseSide` / `houseDouble` (тот же геймплей). */
+export const HOUSE_TOOL_KEY = 'house';
+
 /**
  * Стоимость постройки / найма по ключу инструмента в панели.
  * `uniquePerPlayer`: для этого типа допускается не более одного здания у игрока.
@@ -38,6 +41,11 @@ export const PLACEMENT_COSTS = {
     wood: 80,
     gold: 45,
     wheat: 25,
+  },
+  [HOUSE_TOOL_KEY]: {
+    wood: 60,
+    gold: 35,
+    wheat: 15,
   },
 };
 

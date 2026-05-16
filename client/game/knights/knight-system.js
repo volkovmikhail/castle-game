@@ -184,6 +184,20 @@ export class KnightSystem {
   }
 
   /**
+   * @param {string} ownerUserId
+   * @returns {number}
+   */
+  countKnightsForOwner(ownerUserId) {
+    let n = 0;
+    for (const u of this.#units) {
+      if (u.ownerUserId === ownerUserId) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
    * @param {number} worldPx
    * @param {number} worldPy
    * @param {boolean} shiftKey

@@ -2,6 +2,7 @@ import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import {
   BARN_TOOL_KEY,
+  HOUSE_TOOL_KEY,
   KNIGHT_TOOL_KEY,
   canAfford,
   getNumericCost,
@@ -31,6 +32,8 @@ import {
   GOLD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
   GOLD_PER_KNIGHT_ROCK_CHOP,
   GOLD_PER_KNIGHT_TWO_ROCKS_CHOP,
+  KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE,
+  RESIDENTIAL_HOUSE_COMPLETED_TYPES,
   STORAGE_BONUS_PER_BARN_WHEAT_WOOD,
   WOOD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
   WOOD_PER_KNIGHT_LOGS_CHOP,
@@ -65,8 +68,33 @@ const BARN_UNDER_CONSTRUCTION_SPRITES = new Set([
   'houseBarnSideStage2',
 ]);
 
+/** @type {readonly ('house' | 'houseSide' | 'houseDouble')[]} */
+const RESIDENTIAL_HOUSE_VARIANTS = ['house', 'houseSide', 'houseDouble'];
+
+const RESIDENTIAL_HOUSE_COMPLETED_SPRITES = new Set(RESIDENTIAL_HOUSE_COMPLETED_TYPES);
+
+const RESIDENTIAL_HOUSE_UNDER_CONSTRUCTION_SPRITES = new Set([
+  'houseStage1',
+  'houseStage2',
+  'houseSideStage1',
+  'houseSideStage2',
+  'houseDoubleStage1',
+  'houseDoubleStage2',
+]);
+
 /** @type {{ width: number; height: number; type: string }} */
 const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_SIZE };
+
+/**
+ * @param {'house' | 'houseSide' | 'houseDouble'} variant
+ * @param {1 | 2} stage
+ */
+function residentialHouseStageKey(variant, stage) {
+  if (variant === 'house') {
+    return stage === 1 ? 'houseStage1' : 'houseStage2';
+  }
+  return stage === 1 ? `${variant}Stage1` : `${variant}Stage2`;
+}
 
 export class Game {
   /** @type {KnightSystem} */
@@ -86,6 +114,14 @@ export class Game {
    *       y: number;
    *       step: 0 | 1;
    *       variant: 'houseBarn' | 'houseBarnSide';
+   *       nextAt: number;
+   *     }
+   *   | {
+   *       kind: 'residentialHouseBuild';
+   *       x: number;
+   *       y: number;
+   *       step: 0 | 1;
+   *       variant: 'house' | 'houseSide' | 'houseDouble';
    *       nextAt: number;
    *     }
    *   | { kind: 'farmHouseHarvestWait'; x: number; y: number; nextAt: number }
@@ -337,7 +373,9 @@ export class Game {
         ? KNIGHT_SPAWN_FOOTPRINT
         : buildingKey === BARN_TOOL_KEY
           ? tiles.houseBarn
-          : tiles[buildingKey];
+          : buildingKey === HOUSE_TOOL_KEY
+            ? tiles.house
+            : tiles[buildingKey];
     const { tx, ty } = this.controls.getSelectedCoords();
 
     this.renderer.drawSelector({
@@ -447,6 +485,10 @@ export class Game {
             if (validationError) {
               this.ui.showToast(validationError);
             } else {
+              const knightCapError = this.#tryKnightCapacityForSpawn(this.localPlayer.userId);
+              if (knightCapError) {
+                this.ui.showToast(knightCapError);
+              } else {
               const affordError = this.#tryAffordPlacement(KNIGHT_TOOL_KEY);
               if (affordError) {
                 this.ui.showToast(affordError);
@@ -466,10 +508,13 @@ export class Game {
                   ownerUserId: this.localPlayer.userId,
                 });
               }
+              }
             }
           } else {
             /** @type {'houseBarn' | 'houseBarnSide' | null} */
             let barnVariant = null;
+            /** @type {'house' | 'houseSide' | 'houseDouble' | null} */
+            let residentialVariant = null;
             let placementTileKey;
             if (selectedBuilding === 'market') {
               placementTileKey = 'marketStage1';
@@ -478,6 +523,10 @@ export class Game {
             } else if (selectedBuilding === BARN_TOOL_KEY) {
               barnVariant = Random.getRandomFromRange(0, 1) === 0 ? 'houseBarn' : 'houseBarnSide';
               placementTileKey = barnVariant === 'houseBarn' ? 'houseBarnStage1' : 'houseBarnSideStage1';
+            } else if (selectedBuilding === HOUSE_TOOL_KEY) {
+              residentialVariant =
+                RESIDENTIAL_HOUSE_VARIANTS[Random.getRandomFromRange(0, RESIDENTIAL_HOUSE_VARIANTS.length - 1)];
+              placementTileKey = residentialHouseStageKey(residentialVariant, 1);
             } else {
               placementTileKey = selectedBuilding;
             }
@@ -513,6 +562,8 @@ export class Game {
                     this.#registerHouseFarmConstruction(tx, ty);
                   } else if (selectedBuilding === BARN_TOOL_KEY && barnVariant) {
                     this.#registerBarnConstruction(tx, ty, barnVariant);
+                  } else if (selectedBuilding === HOUSE_TOOL_KEY && residentialVariant) {
+                    this.#registerResidentialHouseConstruction(tx, ty, residentialVariant);
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
@@ -542,6 +593,30 @@ export class Game {
     }
   }
 
+  /**
+   * @param {string} userId
+   * @returns {string | null}
+   */
+  #tryKnightCapacityForSpawn(userId) {
+    const max = this.#maxKnightsForPlayer(userId);
+    const current = this.#knightSystem.countKnightsForOwner(userId);
+    if (current >= max) {
+      return `Лимит рыцарей: ${current}/${max}. Постройте дом (+${KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE} за дом).`;
+    }
+    return null;
+  }
+
+  /** Макс. рыцарей по готовым жилым домам владельца. */
+  #maxKnightsForPlayer(userId) {
+    let houses = 0;
+    for (const [, cell] of this.stateManager.getState()) {
+      if (cell.ownerUserId === userId && RESIDENTIAL_HOUSE_COMPLETED_SPRITES.has(cell.spriteType)) {
+        houses++;
+      }
+    }
+    return houses * KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE;
+  }
+
   /** Лимит пшеницы и дерева по числу готовых сараев владельца на карте. */
   #maxStoredWheatWoodForPlayer(userId) {
     let barns = 0;
@@ -560,8 +635,13 @@ export class Game {
       res.wheat = Math.min(res.wheat, max);
       res.wood = Math.min(res.wood, max);
     }
-    const localMax = this.#maxStoredWheatWoodForPlayer(this.localPlayer.userId);
+    const localUserId = this.localPlayer.userId;
+    const localMax = this.#maxStoredWheatWoodForPlayer(localUserId);
     this.ui.setStorageCaps(localMax, localMax);
+    this.ui.setKnightSlots(
+      this.#knightSystem.countKnightsForOwner(localUserId),
+      this.#maxKnightsForPlayer(localUserId),
+    );
     this.#syncResourcesUi();
   }
 
@@ -831,6 +911,20 @@ export class Game {
         continue;
       }
 
+      if (job.kind === 'residentialHouseBuild') {
+        const stage2Key = residentialHouseStageKey(job.variant, 2);
+        const finalKey = job.variant;
+        if (job.step === 0) {
+          this.#replaceTileAt(job.x, job.y, stage2Key);
+          job.step = 1;
+          job.nextAt = now + stageMs;
+          this.#progressJobs.push(job);
+        } else {
+          this.#replaceTileAt(job.x, job.y, finalKey);
+        }
+        continue;
+      }
+
       if (job.kind === 'farmHouseHarvestWait') {
         const cell = this.stateManager.getState().get(`${job.x}:${job.y}`);
         const ownerId = cell?.ownerUserId;
@@ -914,6 +1008,22 @@ export class Game {
   #registerBarnConstruction(x, y, variant) {
     this.#progressJobs.push({
       kind: 'barnBuild',
+      x,
+      y,
+      step: 0,
+      variant,
+      nextAt: performance.now() + getMarketConstructionStageDurationMs(),
+    });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {'house' | 'houseSide' | 'houseDouble'} variant
+   */
+  #registerResidentialHouseConstruction(x, y, variant) {
+    this.#progressJobs.push({
+      kind: 'residentialHouseBuild',
       x,
       y,
       step: 0,
@@ -1106,6 +1216,11 @@ export class Game {
 
     if (BARN_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
       this.ui.showToast('Сарай ещё строится.');
+      return true;
+    }
+
+    if (RESIDENTIAL_HOUSE_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
+      this.ui.showToast('Дом ещё строится.');
       return true;
     }
 

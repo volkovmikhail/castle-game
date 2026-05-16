@@ -8,6 +8,12 @@ export const BASE_STORAGE_CAP_WHEAT_WOOD = 500;
 /** За каждый построенный сарай (`houseBarn` / `houseBarnSide`) к лимиту пшеницы и дерева. */
 export const STORAGE_BONUS_PER_BARN_WHEAT_WOOD = 250;
 
+/** Слотов для рыцарей за каждый готовый жилой дом (`house` / `houseSide` / `houseDouble`). */
+export const KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE = 5;
+
+/** Готовые жилые дома (все варианты) — увеличивают лимит рыцарей. */
+export const RESIDENTIAL_HOUSE_COMPLETED_TYPES = ['house', 'houseSide', 'houseDouble'];
+
 /**
  * Стартовые ресурсы каждого игрока при загрузке / пересборке мира.
  * @type {PlayerResources}

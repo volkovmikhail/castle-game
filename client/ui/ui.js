@@ -1,6 +1,12 @@
 import { tiles } from '../constants/tiles.js';
 import { BUILDINGS_TOOLBAR, DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
-import { BARN_TOOL_KEY, canAfford, formatCostLineForTool, getNumericCost } from '../constants/economy.js';
+import {
+  BARN_TOOL_KEY,
+  HOUSE_TOOL_KEY,
+  canAfford,
+  formatCostLineForTool,
+  getNumericCost,
+} from '../constants/economy.js';
 import { BASE_STORAGE_CAP_WHEAT_WOOD } from '../constants/resources.js';
 import { getShopExchangePreviewLine, SHOP_QUANTITY_STEP } from '../constants/shop-exchange.js';
 
@@ -38,6 +44,7 @@ export class UI {
   #resourceWheatEl = null;
   #resourceWoodEl = null;
   #resourceGoldEl = null;
+  #resourceKnightsEl = null;
 
   #storageMaxWheat = BASE_STORAGE_CAP_WHEAT_WOOD;
   #storageMaxWood = BASE_STORAGE_CAP_WHEAT_WOOD;
@@ -75,6 +82,7 @@ export class UI {
     this.#resourceWheatEl = document.getElementById('resource-wheat');
     this.#resourceWoodEl = document.getElementById('resource-wood');
     this.#resourceGoldEl = document.getElementById('resource-gold');
+    this.#resourceKnightsEl = document.getElementById('resource-knights');
 
     const root = document.getElementById('building-selector');
     if (!root) {
@@ -91,7 +99,7 @@ export class UI {
       const tile = tiles[previewTileKey];
       const externalSprite = 'externalSprite' in entry && entry.externalSprite;
 
-      if (!tile && !externalSprite && key !== BARN_TOOL_KEY) {
+      if (!tile && !externalSprite && key !== BARN_TOOL_KEY && key !== HOUSE_TOOL_KEY) {
         continue;
       }
 
@@ -295,6 +303,18 @@ export class UI {
     this.#storageMaxWood = maxWood;
     if (this.#lastResources) {
       this.setResources(this.#lastResources);
+    }
+  }
+
+  /**
+   * Текущее число рыцарей и лимит (по жилым домам).
+   *
+   * @param {number} current
+   * @param {number} max
+   */
+  setKnightSlots(current, max) {
+    if (this.#resourceKnightsEl) {
+      this.#resourceKnightsEl.textContent = `${current} / ${max}`;
     }
   }
 
