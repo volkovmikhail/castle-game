@@ -1,6 +1,7 @@
 import { tiles } from '../constants/tiles.js';
 import { BUILDINGS_TOOLBAR, DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
-import { canAfford, formatCostLineForTool, getNumericCost } from '../constants/economy.js';
+import { BARN_TOOL_KEY, canAfford, formatCostLineForTool, getNumericCost } from '../constants/economy.js';
+import { BASE_STORAGE_CAP_WHEAT_WOOD } from '../constants/resources.js';
 import { getShopExchangePreviewLine, SHOP_QUANTITY_STEP } from '../constants/shop-exchange.js';
 
 export class UI {
@@ -37,6 +38,9 @@ export class UI {
   #resourceWheatEl = null;
   #resourceWoodEl = null;
   #resourceGoldEl = null;
+
+  #storageMaxWheat = BASE_STORAGE_CAP_WHEAT_WOOD;
+  #storageMaxWood = BASE_STORAGE_CAP_WHEAT_WOOD;
 
   /**
    * @type {import('../constants/resources.js').PlayerResources | null}
@@ -87,7 +91,7 @@ export class UI {
       const tile = tiles[previewTileKey];
       const externalSprite = 'externalSprite' in entry && entry.externalSprite;
 
-      if (!tile && !externalSprite) {
+      if (!tile && !externalSprite && key !== BARN_TOOL_KEY) {
         continue;
       }
 
@@ -281,15 +285,29 @@ export class UI {
   }
 
   /**
+   * Лимиты склада для отображения пшеницы/дерева (золото без лимита).
+   *
+   * @param {number} maxWheat
+   * @param {number} maxWood
+   */
+  setStorageCaps(maxWheat, maxWood) {
+    this.#storageMaxWheat = maxWheat;
+    this.#storageMaxWood = maxWood;
+    if (this.#lastResources) {
+      this.setResources(this.#lastResources);
+    }
+  }
+
+  /**
    * @param {import('../constants/resources.js').PlayerResources} resources
    */
   setResources(resources) {
     this.#lastResources = { ...resources };
     if (this.#resourceWheatEl) {
-      this.#resourceWheatEl.textContent = String(resources.wheat);
+      this.#resourceWheatEl.textContent = `${resources.wheat} / ${this.#storageMaxWheat}`;
     }
     if (this.#resourceWoodEl) {
-      this.#resourceWoodEl.textContent = String(resources.wood);
+      this.#resourceWoodEl.textContent = `${resources.wood} / ${this.#storageMaxWood}`;
     }
     if (this.#resourceGoldEl) {
       this.#resourceGoldEl.textContent = String(resources.gold);

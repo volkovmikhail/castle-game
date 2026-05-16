@@ -2,14 +2,20 @@
  * @typedef {{ wheat: number; wood: number; gold: number }} PlayerResources
  */
 
+/** Базовый лимит хранения пшеницы и дерева (без сараев). Золото не ограничено. */
+export const BASE_STORAGE_CAP_WHEAT_WOOD = 500;
+
+/** За каждый построенный сарай (`houseBarn` / `houseBarnSide`) к лимиту пшеницы и дерева. */
+export const STORAGE_BONUS_PER_BARN_WHEAT_WOOD = 250;
+
 /**
  * Стартовые ресурсы каждого игрока при загрузке / пересборке мира.
  * @type {PlayerResources}
  */
 export const STARTING_PLAYER_RESOURCES = {
-  wheat: 100,
-  wood: 100,
-  gold: 100,
+  wheat: 500,
+  wood: 500,
+  gold: 1000,
 };
 
 /**

@@ -5,6 +5,9 @@
 /** Ключ рыцаря в панели (не из тайлмапа). */
 export const KNIGHT_TOOL_KEY = 'knight';
 
+/** Сарай в панели: при постройке случайно `houseBarn` или `houseBarnSide` (тот же геймплей). */
+export const BARN_TOOL_KEY = 'barn';
+
 /**
  * Стоимость постройки / найма по ключу инструмента в панели.
  * `uniquePerPlayer`: для этого типа допускается не более одного здания у игрока.
@@ -16,6 +19,11 @@ export const PLACEMENT_COSTS = {
     wood: 50,
     gold: 25,
   },
+  houseFarm: {
+    wood: 70,
+    gold: 40,
+    wheat: 20,
+  },
   market: {
     wheat: 50,
     wood: 50,
@@ -25,6 +33,11 @@ export const PLACEMENT_COSTS = {
   [KNIGHT_TOOL_KEY]: {
     wheat: 25,
     gold: 25,
+  },
+  [BARN_TOOL_KEY]: {
+    wood: 80,
+    gold: 45,
+    wheat: 25,
   },
 };
 

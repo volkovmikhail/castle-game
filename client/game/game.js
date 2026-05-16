@@ -1,6 +1,7 @@
 import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import {
+  BARN_TOOL_KEY,
   KNIGHT_TOOL_KEY,
   canAfford,
   getNumericCost,
@@ -12,6 +13,7 @@ import { PLAYER_PROFILES } from '../constants/players.js';
 import {
   FARM_GROWTH_STAGE_MS,
   FARM_GROWTH_STAGES,
+  FARM_RIPE_BEFORE_AUTO_HARVEST_MS,
   getMarketConstructionStageDurationMs,
   WHEAT_PER_FARM_HARVEST,
 } from '../constants/buildings-progress.js';
@@ -23,11 +25,13 @@ import {
 } from '../constants/shop-exchange.js';
 import { STRUCTURE_DAMAGE_PER_CHOP, BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
 import {
+  BASE_STORAGE_CAP_WHEAT_WOOD,
   cloneStartingResources,
   getKnightChopWoodForForestSprite,
   GOLD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
   GOLD_PER_KNIGHT_ROCK_CHOP,
   GOLD_PER_KNIGHT_TWO_ROCKS_CHOP,
+  STORAGE_BONUS_PER_BARN_WHEAT_WOOD,
   WOOD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
   WOOD_PER_KNIGHT_LOGS_CHOP,
 } from '../constants/resources.js';
@@ -50,6 +54,17 @@ import { KnightSystem } from './knights/knight-system.js';
 const MAX_BUILD_DISTANCE_CELLS = 2;
 const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
 
+/** Готовые сараи: вместимость считается только по ним. */
+const BARN_CAPACITY_SPRITE_TYPES = new Set(['houseBarn', 'houseBarnSide']);
+
+/** Стадии стройки сарая — клик показывает тост (как магазин). */
+const BARN_UNDER_CONSTRUCTION_SPRITES = new Set([
+  'houseBarnStage1',
+  'houseBarnStage2',
+  'houseBarnSideStage1',
+  'houseBarnSideStage2',
+]);
+
 /** @type {{ width: number; height: number; type: string }} */
 const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_SIZE };
 
@@ -61,9 +76,19 @@ export class Game {
   #playerResources = new Map();
 
   /**
-   * Таймеры постройки магазина и роста фермы.
+   * Таймеры постройки магазина / фермерского дома и роста фермы.
    * @type {(
    *   | { kind: 'market'; x: number; y: number; step: 0 | 1; nextAt: number }
+   *   | { kind: 'houseFarmBuild'; x: number; y: number; step: 0 | 1; nextAt: number }
+   *   | {
+   *       kind: 'barnBuild';
+   *       x: number;
+   *       y: number;
+   *       step: 0 | 1;
+   *       variant: 'houseBarn' | 'houseBarnSide';
+   *       nextAt: number;
+   *     }
+   *   | { kind: 'farmHouseHarvestWait'; x: number; y: number; nextAt: number }
    *   | { kind: 'farm'; x: number; y: number; nextAt: number }
    * )[]}
    */
@@ -288,7 +313,7 @@ export class Game {
     });
     this.#resetPlayerResources();
     this.#placeInitialCastles();
-    this.#syncResourcesUi();
+    this.#enforceStorageCapsAllPlayers();
 
     this.snow = new SnowOverlay({
       width: rendererSize.width,
@@ -307,7 +332,12 @@ export class Game {
     });
 
     const buildingKey = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
-    const tileData = buildingKey === KNIGHT_TOOL_KEY ? KNIGHT_SPAWN_FOOTPRINT : tiles[buildingKey];
+    const tileData =
+      buildingKey === KNIGHT_TOOL_KEY
+        ? KNIGHT_SPAWN_FOOTPRINT
+        : buildingKey === BARN_TOOL_KEY
+          ? tiles.houseBarn
+          : tiles[buildingKey];
     const { tx, ty } = this.controls.getSelectedCoords();
 
     this.renderer.drawSelector({
@@ -438,8 +468,19 @@ export class Game {
               }
             }
           } else {
-            const placementTileKey =
-              selectedBuilding === 'market' ? 'marketStage1' : selectedBuilding;
+            /** @type {'houseBarn' | 'houseBarnSide' | null} */
+            let barnVariant = null;
+            let placementTileKey;
+            if (selectedBuilding === 'market') {
+              placementTileKey = 'marketStage1';
+            } else if (selectedBuilding === 'houseFarm') {
+              placementTileKey = 'houseFarmStage1';
+            } else if (selectedBuilding === BARN_TOOL_KEY) {
+              barnVariant = Random.getRandomFromRange(0, 1) === 0 ? 'houseBarn' : 'houseBarnSide';
+              placementTileKey = barnVariant === 'houseBarn' ? 'houseBarnStage1' : 'houseBarnSideStage1';
+            } else {
+              placementTileKey = selectedBuilding;
+            }
             const tileData = tiles[placementTileKey];
             const validationError = this.#validatePlacement({
               x: tx,
@@ -468,6 +509,10 @@ export class Game {
                   });
                   if (selectedBuilding === 'market') {
                     this.#registerMarketConstruction(tx, ty);
+                  } else if (selectedBuilding === 'houseFarm') {
+                    this.#registerHouseFarmConstruction(tx, ty);
+                  } else if (selectedBuilding === BARN_TOOL_KEY && barnVariant) {
+                    this.#registerBarnConstruction(tx, ty, barnVariant);
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
@@ -480,6 +525,7 @@ export class Game {
     }
 
     this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
+    this.#enforceStorageCapsAllPlayers();
   }
 
   #resetPlayerResources() {
@@ -494,6 +540,29 @@ export class Game {
     if (resources) {
       this.ui.setResources(resources);
     }
+  }
+
+  /** Лимит пшеницы и дерева по числу готовых сараев владельца на карте. */
+  #maxStoredWheatWoodForPlayer(userId) {
+    let barns = 0;
+    for (const [, cell] of this.stateManager.getState()) {
+      if (cell.ownerUserId === userId && BARN_CAPACITY_SPRITE_TYPES.has(cell.spriteType)) {
+        barns++;
+      }
+    }
+    return BASE_STORAGE_CAP_WHEAT_WOOD + barns * STORAGE_BONUS_PER_BARN_WHEAT_WOOD;
+  }
+
+  /** Обрезка склада; лимиты в UI и строка ресурсов локального игрока. */
+  #enforceStorageCapsAllPlayers() {
+    for (const [userId, res] of this.#playerResources) {
+      const max = this.#maxStoredWheatWoodForPlayer(userId);
+      res.wheat = Math.min(res.wheat, max);
+      res.wood = Math.min(res.wood, max);
+    }
+    const localMax = this.#maxStoredWheatWoodForPlayer(this.localPlayer.userId);
+    this.ui.setStorageCaps(localMax, localMax);
+    this.#syncResourcesUi();
   }
 
   /**
@@ -714,11 +783,12 @@ export class Game {
   #processProgressJobs() {
     const now = performance.now();
     const stageMs = getMarketConstructionStageDurationMs();
-    const keep = [];
+    const queue = this.#progressJobs;
+    this.#progressJobs = [];
 
-    for (const job of this.#progressJobs) {
+    for (const job of queue) {
       if (now < job.nextAt) {
-        keep.push(job);
+        this.#progressJobs.push(job);
         continue;
       }
 
@@ -727,21 +797,60 @@ export class Game {
           this.#replaceTileAt(job.x, job.y, 'marketStage2');
           job.step = 1;
           job.nextAt = now + stageMs;
-          keep.push(job);
+          this.#progressJobs.push(job);
         } else {
           this.#replaceTileAt(job.x, job.y, 'market');
         }
         continue;
       }
 
+      if (job.kind === 'houseFarmBuild') {
+        if (job.step === 0) {
+          this.#replaceTileAt(job.x, job.y, 'houseFarmStage2');
+          job.step = 1;
+          job.nextAt = now + stageMs;
+          this.#progressJobs.push(job);
+        } else {
+          this.#replaceTileAt(job.x, job.y, 'houseFarm');
+          this.#autoHarvestRipeWheatAroundHouseFarm(job.x, job.y);
+        }
+        continue;
+      }
+
+      if (job.kind === 'barnBuild') {
+        const stage2Key = job.variant === 'houseBarn' ? 'houseBarnStage2' : 'houseBarnSideStage2';
+        const finalKey = job.variant;
+        if (job.step === 0) {
+          this.#replaceTileAt(job.x, job.y, stage2Key);
+          job.step = 1;
+          job.nextAt = now + stageMs;
+          this.#progressJobs.push(job);
+        } else {
+          this.#replaceTileAt(job.x, job.y, finalKey);
+        }
+        continue;
+      }
+
+      if (job.kind === 'farmHouseHarvestWait') {
+        const cell = this.stateManager.getState().get(`${job.x}:${job.y}`);
+        const ownerId = cell?.ownerUserId;
+        if (
+          cell?.spriteType === 'farmStage4' &&
+          ownerId &&
+          this.#hasCompletedHouseFarmAdjacentToFarmCell(job.x, job.y, ownerId)
+        ) {
+          this.#harvestFarmCell(job.x, job.y);
+        }
+        continue;
+      }
+
       if (job.kind === 'farm') {
         if (this.#advanceFarmGrowthJob(job, now)) {
-          keep.push(job);
+          this.#progressJobs.push(job);
         }
+        continue;
       }
     }
-
-    this.#progressJobs = keep;
   }
 
   /**
@@ -787,12 +896,62 @@ export class Game {
    * @param {number} x
    * @param {number} y
    */
+  #registerHouseFarmConstruction(x, y) {
+    this.#progressJobs.push({
+      kind: 'houseFarmBuild',
+      x,
+      y,
+      step: 0,
+      nextAt: performance.now() + getMarketConstructionStageDurationMs(),
+    });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {'houseBarn' | 'houseBarnSide'} variant
+   */
+  #registerBarnConstruction(x, y, variant) {
+    this.#progressJobs.push({
+      kind: 'barnBuild',
+      x,
+      y,
+      step: 0,
+      variant,
+      nextAt: performance.now() + getMarketConstructionStageDurationMs(),
+    });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
   #registerFarmGrowth(x, y) {
     this.#progressJobs.push({
       kind: 'farm',
       x,
       y,
       nextAt: performance.now() + FARM_GROWTH_STAGE_MS,
+    });
+  }
+
+  /**
+   * Отложенный авто-сбор домом фермера после `farmStage4` (см. `FARM_RIPE_BEFORE_AUTO_HARVEST_MS`).
+   *
+   * @param {number} fx
+   * @param {number} fy
+   */
+  #enqueueDelayedHouseFarmAutoHarvest(fx, fy) {
+    for (const j of this.#progressJobs) {
+      if (j.kind === 'farmHouseHarvestWait' && j.x === fx && j.y === fy) {
+        return;
+      }
+    }
+    this.#progressJobs.push({
+      kind: 'farmHouseHarvestWait',
+      x: fx,
+      y: fy,
+      nextAt: performance.now() + FARM_RIPE_BEFORE_AUTO_HARVEST_MS,
     });
   }
 
@@ -818,10 +977,107 @@ export class Game {
     this.#replaceTileAt(job.x, job.y, nextType);
 
     if (nextType === 'farmStage4') {
+      const grown = this.stateManager.getState().get(`${job.x}:${job.y}`);
+      const ownerId = grown?.ownerUserId;
+      if (
+        ownerId &&
+        this.#hasCompletedHouseFarmAdjacentToFarmCell(job.x, job.y, ownerId)
+      ) {
+        this.#enqueueDelayedHouseFarmAutoHarvest(job.x, job.y);
+      }
       return false;
     }
 
     job.nextAt = now + FARM_GROWTH_STAGE_MS;
+    return true;
+  }
+
+  /**
+   * Готовый дом фермера рядом с клеткой поля (Чебышёв ≤ 1), тот же владелец.
+   *
+   * @param {number} farmPx
+   * @param {number} farmPy
+   * @param {string} ownerUserId
+   */
+  #hasCompletedHouseFarmAdjacentToFarmCell(farmPx, farmPy, ownerUserId) {
+    const ftx = farmPx / TILE_SIZE;
+    const fty = farmPy / TILE_SIZE;
+    const state = this.stateManager.getState();
+
+    for (let dtx = -1; dtx <= 1; dtx++) {
+      for (let dty = -1; dty <= 1; dty++) {
+        if (dtx === 0 && dty === 0) {
+          continue;
+        }
+        const hx = (ftx + dtx) * TILE_SIZE;
+        const hy = (fty + dty) * TILE_SIZE;
+        const cell = state.get(`${hx}:${hy}`);
+        if (cell?.spriteType === 'houseFarm' && cell.ownerUserId === ownerUserId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Созревшая ферма вокруг готового дома фермера (радиус 1 клетка).
+   *
+   * @param {number} housePx
+   * @param {number} housePy
+   */
+  #autoHarvestRipeWheatAroundHouseFarm(housePx, housePy) {
+    const cell = this.stateManager.getState().get(`${housePx}:${housePy}`);
+    const ownerId = cell?.ownerUserId;
+    if (!ownerId) {
+      return;
+    }
+    const htx = housePx / TILE_SIZE;
+    const hty = housePy / TILE_SIZE;
+
+    for (let dtx = -1; dtx <= 1; dtx++) {
+      for (let dty = -1; dty <= 1; dty++) {
+        if (dtx === 0 && dty === 0) {
+          continue;
+        }
+        const fx = (htx + dtx) * TILE_SIZE;
+        const fy = (hty + dty) * TILE_SIZE;
+        const fc = this.stateManager.getState().get(`${fx}:${fy}`);
+        if (fc?.spriteType === 'farmStage4' && fc.ownerUserId === ownerId) {
+          this.#enqueueDelayedHouseFarmAutoHarvest(fx, fy);
+        }
+      }
+    }
+  }
+
+  /**
+   * Сбор урожая с созревшего поля (ручной или авто домом фермера после паузы `FARM_RIPE_BEFORE_AUTO_HARVEST_MS`).
+   *
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {boolean}
+   */
+  #harvestFarmCell(tx, ty) {
+    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
+    if (!cell?.isRenderable || cell.spriteType !== 'farmStage4') {
+      return false;
+    }
+
+    this.#progressJobs = this.#progressJobs.filter(
+      (j) => !(j.kind === 'farmHouseHarvestWait' && j.x === tx && j.y === ty),
+    );
+
+    const ownerUserId = cell.ownerUserId;
+    const resources = ownerUserId ? this.#playerResources.get(ownerUserId) : null;
+    if (resources) {
+      resources.wheat += WHEAT_PER_FARM_HARVEST;
+      if (ownerUserId === this.localPlayer.userId) {
+        this.ui.setResources(resources);
+      }
+    }
+
+    this.#replaceTileAt(tx, ty, 'farmStage1');
+    this.#registerFarmGrowth(tx, ty);
     return true;
   }
 
@@ -840,6 +1096,16 @@ export class Game {
 
     if (cell.spriteType === 'marketStage1' || cell.spriteType === 'marketStage2') {
       this.ui.showToast('Магазин ещё строится.');
+      return true;
+    }
+
+    if (cell.spriteType === 'houseFarmStage1' || cell.spriteType === 'houseFarmStage2') {
+      this.ui.showToast('Фермерский дом ещё строится.');
+      return true;
+    }
+
+    if (BARN_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
+      this.ui.showToast('Сарай ещё строится.');
       return true;
     }
 
@@ -942,14 +1208,7 @@ export class Game {
       return true;
     }
 
-    const resources = this.#playerResources.get(this.localPlayer.userId);
-    if (resources) {
-      resources.wheat += WHEAT_PER_FARM_HARVEST;
-      this.ui.setResources(resources);
-    }
-
-    this.#replaceTileAt(tx, ty, 'farmStage1');
-    this.#registerFarmGrowth(tx, ty);
+    this.#harvestFarmCell(tx, ty);
     return true;
   }
 
