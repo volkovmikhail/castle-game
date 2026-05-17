@@ -2,6 +2,7 @@ import { tiles } from '../constants/tiles.js';
 import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import {
   BARN_TOOL_KEY,
+  BLACKSMITH_TOOL_KEY,
   HOUSE_TOOL_KEY,
   KNIGHT_TOOL_KEY,
   canAfford,
@@ -24,7 +25,13 @@ import {
   SHOP_WOOD_PER_ONE_GOLD,
   SHOP_WOOD_PER_SPENT_GOLD,
 } from '../constants/shop-exchange.js';
-import { STRUCTURE_DAMAGE_PER_CHOP, BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
+import {
+  BLACKSMITH_COMPLETED_SPRITE_TYPE,
+  BLACKSMITH_CONSTRUCTION_SPRITE_TYPES,
+  getKnightUpgradeCost,
+  maxKnightUpgradeLevelForBlacksmiths,
+} from '../constants/knight-upgrades.js';
+import { BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
 import {
   BASE_STORAGE_CAP_WHEAT_WOOD,
   cloneStartingResources,
@@ -103,6 +110,9 @@ export class Game {
   /** @type {Map<string, import('../constants/resources.js').PlayerResources>} */
   #playerResources = new Map();
 
+  /** @type {Map<string, { healthLevel: number; attackLevel: number }>} */
+  #playerKnightUpgrades = new Map();
+
   /**
    * Таймеры постройки магазина / фермерского дома и роста фермы.
    * @type {(
@@ -124,6 +134,7 @@ export class Game {
    *       variant: 'house' | 'houseSide' | 'houseDouble';
    *       nextAt: number;
    *     }
+   *   | { kind: 'blacksmithBuild'; x: number; y: number; step: 0 | 1; nextAt: number }
    *   | { kind: 'farmHouseHarvestWait'; x: number; y: number; nextAt: number }
    *   | { kind: 'farm'; x: number; y: number; nextAt: number }
    * )[]}
@@ -163,8 +174,8 @@ export class Game {
     this.localPlayer = PLAYER_PROFILES[0];
 
     this.#knightSystem = new KnightSystem({
-      applyChopHit: (anchorTx, anchorTy, knightOwnerId) => {
-        this.#applyChopHit(anchorTx, anchorTy, knightOwnerId);
+      applyChopHit: (anchorTx, anchorTy, knightOwnerId, damage) => {
+        this.#applyChopHit(anchorTx, anchorTy, knightOwnerId, damage);
       },
     });
   }
@@ -175,8 +186,9 @@ export class Game {
    * @param {number} anchorTx
    * @param {number} anchorTy
    * @param {string} knightOwnerId
+   * @param {number} damage
    */
-  #applyChopHit(anchorTx, anchorTy, knightOwnerId) {
+  #applyChopHit(anchorTx, anchorTy, knightOwnerId, damage) {
     const state = this.stateManager.getState();
     const cell = state.get(`${anchorTx}:${anchorTy}`);
     if (!cell?.entity || typeof cell.entity.hp !== 'number') {
@@ -186,7 +198,7 @@ export class Game {
     const ent = cell.entity;
 
     if (isTreeSpriteType(cell.spriteType)) {
-      ent.hp -= STRUCTURE_DAMAGE_PER_CHOP;
+      ent.hp -= damage;
       ent.lastDamagedAtMs = performance.now();
       if (ent.hp <= 0) {
         const spriteType = cell.spriteType;
@@ -219,7 +231,7 @@ export class Game {
       return;
     }
 
-    ent.hp -= STRUCTURE_DAMAGE_PER_CHOP;
+    ent.hp -= damage;
     ent.lastDamagedAtMs = performance.now();
     if (ent.hp <= 0) {
       const tileData = tiles[cell.spriteType];
@@ -375,7 +387,9 @@ export class Game {
           ? tiles.houseBarn
           : buildingKey === HOUSE_TOOL_KEY
             ? tiles.house
-            : tiles[buildingKey];
+            : buildingKey === BLACKSMITH_TOOL_KEY
+              ? tiles.houseBlacksmith
+              : tiles[buildingKey];
     const { tx, ty } = this.controls.getSelectedCoords();
 
     this.renderer.drawSelector({
@@ -475,7 +489,7 @@ export class Game {
 
         const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
 
-        if (!this.#tryHarvestFarm(tx, ty) && !this.#tryOpenShop(tx, ty)) {
+        if (!this.#tryHarvestFarm(tx, ty) && !this.#tryOpenShop(tx, ty) && !this.#tryOpenKnightUpgrade(tx, ty)) {
           if (selectedBuilding === KNIGHT_TOOL_KEY) {
             const validationError = this.#validatePlacement({
               x: tx,
@@ -502,10 +516,13 @@ export class Game {
                 const maxY = ty + TILE_SIZE - KNIGHT_SPRITE_HEIGHT;
                 spawnX = Math.max(minX, Math.min(maxX, spawnX));
                 spawnY = Math.max(minY, Math.min(maxY, spawnY));
+                const army = this.#getKnightUpgrades(this.localPlayer.userId);
                 this.#knightSystem.spawn({
                   x: spawnX,
                   y: spawnY,
                   ownerUserId: this.localPlayer.userId,
+                  healthLevel: army.healthLevel,
+                  attackLevel: army.attackLevel,
                 });
               }
               }
@@ -527,6 +544,8 @@ export class Game {
               residentialVariant =
                 RESIDENTIAL_HOUSE_VARIANTS[Random.getRandomFromRange(0, RESIDENTIAL_HOUSE_VARIANTS.length - 1)];
               placementTileKey = residentialHouseStageKey(residentialVariant, 1);
+            } else if (selectedBuilding === BLACKSMITH_TOOL_KEY) {
+              placementTileKey = 'houseBlacksmithStage1';
             } else {
               placementTileKey = selectedBuilding;
             }
@@ -564,6 +583,8 @@ export class Game {
                     this.#registerBarnConstruction(tx, ty, barnVariant);
                   } else if (selectedBuilding === HOUSE_TOOL_KEY && residentialVariant) {
                     this.#registerResidentialHouseConstruction(tx, ty, residentialVariant);
+                  } else if (selectedBuilding === BLACKSMITH_TOOL_KEY) {
+                    this.#registerBlacksmithConstruction(tx, ty);
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
@@ -581,9 +602,37 @@ export class Game {
 
   #resetPlayerResources() {
     this.#playerResources.clear();
+    this.#playerKnightUpgrades.clear();
     for (const playerProfile of PLAYER_PROFILES) {
       this.#playerResources.set(playerProfile.userId, cloneStartingResources());
+      this.#playerKnightUpgrades.set(playerProfile.userId, { healthLevel: 0, attackLevel: 0 });
     }
+  }
+
+  /**
+   * @param {string} userId
+   * @returns {{ healthLevel: number; attackLevel: number }}
+   */
+  #getKnightUpgrades(userId) {
+    return this.#playerKnightUpgrades.get(userId) ?? { healthLevel: 0, attackLevel: 0 };
+  }
+
+  /** @param {string} userId */
+  #countBlacksmithsForPlayer(userId) {
+    let n = 0;
+    for (const [, cell] of this.stateManager.getState()) {
+      if (cell.ownerUserId === userId && cell.spriteType === BLACKSMITH_COMPLETED_SPRITE_TYPE) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  #syncKnightArmyUi() {
+    const userId = this.localPlayer.userId;
+    const up = this.#getKnightUpgrades(userId);
+    const maxLevel = maxKnightUpgradeLevelForBlacksmiths(this.#countBlacksmithsForPlayer(userId));
+    this.ui.setKnightArmyLevels(up.healthLevel, up.attackLevel, maxLevel);
   }
 
   #syncResourcesUi() {
@@ -642,6 +691,7 @@ export class Game {
       this.#knightSystem.countKnightsForOwner(localUserId),
       this.#maxKnightsForPlayer(localUserId),
     );
+    this.#syncKnightArmyUi();
     this.#syncResourcesUi();
   }
 
@@ -925,6 +975,18 @@ export class Game {
         continue;
       }
 
+      if (job.kind === 'blacksmithBuild') {
+        if (job.step === 0) {
+          this.#replaceTileAt(job.x, job.y, 'houseBlacksmithStage2');
+          job.step = 1;
+          job.nextAt = now + stageMs;
+          this.#progressJobs.push(job);
+        } else {
+          this.#replaceTileAt(job.x, job.y, BLACKSMITH_COMPLETED_SPRITE_TYPE);
+        }
+        continue;
+      }
+
       if (job.kind === 'farmHouseHarvestWait') {
         const cell = this.stateManager.getState().get(`${job.x}:${job.y}`);
         const ownerId = cell?.ownerUserId;
@@ -1028,6 +1090,20 @@ export class Game {
       y,
       step: 0,
       variant,
+      nextAt: performance.now() + getMarketConstructionStageDurationMs(),
+    });
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  #registerBlacksmithConstruction(x, y) {
+    this.#progressJobs.push({
+      kind: 'blacksmithBuild',
+      x,
+      y,
+      step: 0,
       nextAt: performance.now() + getMarketConstructionStageDurationMs(),
     });
   }
@@ -1192,6 +1268,105 @@ export class Game {
   }
 
   /**
+   * Клик по замку или кузнице: прокачка рыцарей.
+   *
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {boolean}
+   */
+  #tryOpenKnightUpgrade(tx, ty) {
+    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
+    if (!cell) {
+      return false;
+    }
+
+    if (BLACKSMITH_CONSTRUCTION_SPRITE_TYPES.includes(cell.spriteType)) {
+      this.ui.showToast('Кузница ещё строится.');
+      return true;
+    }
+
+    const isCastle = cell.spriteType === 'castle';
+    const isBlacksmith = cell.spriteType === BLACKSMITH_COMPLETED_SPRITE_TYPE;
+    if (!isCastle && !isBlacksmith) {
+      return false;
+    }
+
+    if (cell.ownerUserId !== this.localPlayer.userId) {
+      this.ui.showToast(isCastle ? 'Это не ваш замок.' : 'Это не ваша кузница.');
+      return true;
+    }
+
+    if (this.#countBlacksmithsForPlayer(this.localPlayer.userId) < 1) {
+      this.ui.showToast('Нужна кузница, чтобы прокачивать рыцарей.');
+      return true;
+    }
+
+    const userId = this.localPlayer.userId;
+    this.ui.openKnightUpgrade({
+      getViewState: () => {
+        const up = this.#getKnightUpgrades(userId);
+        const resources = this.#playerResources.get(userId);
+        const blacksmithCount = this.#countBlacksmithsForPlayer(userId);
+        return {
+          healthLevel: up.healthLevel,
+          attackLevel: up.attackLevel,
+          maxLevel: maxKnightUpgradeLevelForBlacksmiths(blacksmithCount),
+          blacksmithCount,
+          resources: resources ? { ...resources } : { wheat: 0, wood: 0, gold: 0 },
+        };
+      },
+      onUpgrade: (kind) => this.#upgradeKnightArmy(userId, kind),
+    });
+    return true;
+  }
+
+  /**
+   * @param {string} userId
+   * @param {'health' | 'attack'} kind
+   * @returns {{ ok: boolean; message?: string }}
+   */
+  #upgradeKnightArmy(userId, kind) {
+    const up = this.#getKnightUpgrades(userId);
+    const blacksmithCount = this.#countBlacksmithsForPlayer(userId);
+    const maxLevel = maxKnightUpgradeLevelForBlacksmiths(blacksmithCount);
+    const current = kind === 'health' ? up.healthLevel : up.attackLevel;
+
+    if (current >= maxLevel) {
+      return {
+        ok: false,
+        message: `Максимум для ${blacksmithCount} кузниц: ${maxLevel} уровней.`,
+      };
+    }
+
+    const nextLevel = current + 1;
+    const resources = this.#playerResources.get(userId);
+    if (!resources) {
+      return { ok: false, message: 'Нет данных ресурсов.' };
+    }
+
+    const cost = getKnightUpgradeCost(kind, nextLevel);
+    if (!canAfford(resources, cost)) {
+      return { ok: false, message: 'Недостаточно ресурсов.' };
+    }
+
+    subtractResources(resources, cost);
+    if (kind === 'health') {
+      up.healthLevel = nextLevel;
+    } else {
+      up.attackLevel = nextLevel;
+    }
+
+    this.#knightSystem.applyArmyUpgradesToOwner(userId, up.healthLevel, up.attackLevel);
+
+    if (userId === this.localPlayer.userId) {
+      this.ui.setResources(resources);
+      this.#syncKnightArmyUi();
+    }
+
+    return { ok: true };
+  }
+
+  /**
    * Клик по магазину: модалка обмена или сообщение.
    *
    * @param {number} tx
@@ -1221,6 +1396,11 @@ export class Game {
 
     if (RESIDENTIAL_HOUSE_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
       this.ui.showToast('Дом ещё строится.');
+      return true;
+    }
+
+    if (BLACKSMITH_CONSTRUCTION_SPRITE_TYPES.includes(cell.spriteType)) {
+      this.ui.showToast('Кузница ещё строится.');
       return true;
     }
 

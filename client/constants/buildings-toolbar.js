@@ -31,6 +31,13 @@ export const BUILDINGS_TOOLBAR = [
     spriteH: 16,
     label: 'Дом',
   },
+  {
+    key: 'blacksmith',
+    previewTileKey: 'houseBlacksmith',
+    spriteW: 16,
+    spriteH: 16,
+    label: 'Кузница',
+  },
   { key: 'market', spriteW: 16, spriteH: 16, label: 'Магазин' },
   { key: 'knight', spriteW: 8, spriteH: 8, externalSprite: true, label: 'Рыцарь' },
 ];

@@ -58,7 +58,22 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+/* Список построек занимает остаток высоты и скроллится, не наезжая на блоки выше. */
+.sidebar__section--buildings {
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar__section--buildings .building-selector {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .sidebar__section-title {
@@ -116,11 +131,16 @@ body {
 }
 
 .resource-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.62);
 }
 
 .resource-row__value {
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
   font-size: 0.88rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -324,6 +344,13 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.market-modal__panel--knight {
+  width: min(640px, calc(100vw - 32px));
+  max-height: none;
+  overflow: visible;
+  padding: 1.5rem 1.6rem 1.35rem;
+}
+
 .market-modal__title {
   margin: 0 0 0.35rem;
   font-size: 1.15rem;
@@ -457,4 +484,68 @@ body {
 
 .market-modal__btn--primary:hover {
   background: linear-gradient(180deg, rgba(100, 140, 240, 0.45), rgba(80, 110, 210, 0.3));
+}
+
+.knight-upgrade-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+@media (max-width: 560px) {
+  .knight-upgrade-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .market-modal__panel--knight {
+    width: min(420px, calc(100vw - 32px));
+  }
+}
+
+.knight-upgrade-stat {
+  margin-bottom: 0;
+  padding: 1rem 1.05rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.market-modal__panel--knight .knight-upgrade-stat .market-modal__preview {
+  margin-bottom: 0.65rem;
+  min-height: 0;
+}
+
+.market-modal__panel--knight .market-modal__lead {
+  margin-bottom: 1.15rem;
+}
+
+.market-modal__panel--knight .market-modal__actions {
+  margin-top: 1.35rem;
+  padding-top: 0.25rem;
+}
+
+.knight-upgrade-stat__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 0.35rem;
+}
+
+.knight-upgrade-stat__name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.knight-upgrade-stat__levels {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(180, 210, 255, 0.9);
+}
+
+.knight-upgrade-stat .market-modal__btn {
+  width: 100%;
+  margin-top: 0.5rem;
 }

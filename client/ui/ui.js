@@ -2,11 +2,18 @@ import { tiles } from '../constants/tiles.js';
 import { BUILDINGS_TOOLBAR, DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import {
   BARN_TOOL_KEY,
+  BLACKSMITH_TOOL_KEY,
   HOUSE_TOOL_KEY,
   canAfford,
   formatCostLineForTool,
   getNumericCost,
 } from '../constants/economy.js';
+import {
+  describeKnightUpgradeStat,
+  formatKnightUpgradeCostLine,
+  getKnightUpgradeCost,
+  KNIGHT_UPGRADE_LEVELS_PER_BLACKSMITH,
+} from '../constants/knight-upgrades.js';
 import { BASE_STORAGE_CAP_WHEAT_WOOD } from '../constants/resources.js';
 import { getShopExchangePreviewLine, SHOP_QUANTITY_STEP } from '../constants/shop-exchange.js';
 
@@ -45,6 +52,8 @@ export class UI {
   #resourceWoodEl = null;
   #resourceGoldEl = null;
   #resourceKnightsEl = null;
+  #armyHealthLevelEl = null;
+  #armyAttackLevelEl = null;
 
   #storageMaxWheat = BASE_STORAGE_CAP_WHEAT_WOOD;
   #storageMaxWood = BASE_STORAGE_CAP_WHEAT_WOOD;
@@ -68,8 +77,25 @@ export class UI {
    */
   #marketShopCallbacks = null;
 
+  /** @type {HTMLElement | null} */
+  #knightUpgradeModalEl = null;
+
+  /**
+   * @type {{
+   *   getViewState: () => {
+   *     healthLevel: number;
+   *     attackLevel: number;
+   *     maxLevel: number;
+   *     blacksmithCount: number;
+   *     resources: import('../constants/resources.js').PlayerResources;
+   *   };
+   *   onUpgrade: (kind: 'health' | 'attack') => { ok: boolean; message?: string };
+   * } | null}
+   */
+  #knightUpgradeCallbacks = null;
+
   /** @type {((e: KeyboardEvent) => void) | null} */
-  #marketEscapeHandler = null;
+  #modalEscapeHandler = null;
 
   constructor() {
     this.#init();
@@ -83,6 +109,8 @@ export class UI {
     this.#resourceWoodEl = document.getElementById('resource-wood');
     this.#resourceGoldEl = document.getElementById('resource-gold');
     this.#resourceKnightsEl = document.getElementById('resource-knights');
+    this.#armyHealthLevelEl = document.getElementById('army-health-level');
+    this.#armyAttackLevelEl = document.getElementById('army-attack-level');
 
     const root = document.getElementById('building-selector');
     if (!root) {
@@ -99,7 +127,13 @@ export class UI {
       const tile = tiles[previewTileKey];
       const externalSprite = 'externalSprite' in entry && entry.externalSprite;
 
-      if (!tile && !externalSprite && key !== BARN_TOOL_KEY && key !== HOUSE_TOOL_KEY) {
+      if (
+        !tile &&
+        !externalSprite &&
+        key !== BARN_TOOL_KEY &&
+        key !== HOUSE_TOOL_KEY &&
+        key !== BLACKSMITH_TOOL_KEY
+      ) {
         continue;
       }
 
@@ -161,6 +195,8 @@ export class UI {
     }
 
     this.#initMarketShopModal();
+    this.#initKnightUpgradeModal();
+    this.#initModalEscapeHandler();
   }
 
   #refreshMarketShopPreview() {
@@ -270,16 +306,6 @@ export class UI {
 
     this.#refreshMarketShopPreview();
 
-    if (!this.#marketEscapeHandler) {
-      this.#marketEscapeHandler = (e) => {
-        if (e.key === 'Escape' && this.#marketModalEl && !this.#marketModalEl.hidden) {
-          e.preventDefault();
-          this.closeMarketShop();
-        }
-      };
-      document.addEventListener('keydown', this.#marketEscapeHandler);
-    }
-
     qtyInput?.focus();
   }
 
@@ -319,6 +345,23 @@ export class UI {
   }
 
   /**
+   * Уровни прокачки войск в сайдбаре.
+   *
+   * @param {number} healthLevel
+   * @param {number} attackLevel
+   * @param {number} maxLevel
+   */
+  setKnightArmyLevels(healthLevel, attackLevel, maxLevel) {
+    const max = Math.max(0, maxLevel);
+    if (this.#armyHealthLevelEl) {
+      this.#armyHealthLevelEl.textContent = `${healthLevel} / ${max}`;
+    }
+    if (this.#armyAttackLevelEl) {
+      this.#armyAttackLevelEl.textContent = `${attackLevel} / ${max}`;
+    }
+  }
+
+  /**
    * @param {import('../constants/resources.js').PlayerResources} resources
    */
   setResources(resources) {
@@ -336,6 +379,168 @@ export class UI {
     if (this.#marketModalEl && !this.#marketModalEl.hidden) {
       this.#refreshMarketShopPreview();
     }
+    if (this.#knightUpgradeModalEl && !this.#knightUpgradeModalEl.hidden) {
+      this.#refreshKnightUpgradeModal();
+    }
+  }
+
+  #initKnightUpgradeModal() {
+    this.#knightUpgradeModalEl = document.getElementById('knight-upgrade-modal');
+    if (!this.#knightUpgradeModalEl) {
+      return;
+    }
+
+    document.getElementById('knight-upgrade-health-btn')?.addEventListener('click', () => {
+      this.#confirmKnightUpgrade('health');
+    });
+    document.getElementById('knight-upgrade-attack-btn')?.addEventListener('click', () => {
+      this.#confirmKnightUpgrade('attack');
+    });
+
+    const close = () => this.closeKnightUpgrade();
+    for (const el of this.#knightUpgradeModalEl.querySelectorAll('[data-knight-upgrade-close]')) {
+      el.addEventListener('click', close);
+    }
+  }
+
+  #initModalEscapeHandler() {
+    if (this.#modalEscapeHandler) {
+      return;
+    }
+    this.#modalEscapeHandler = (e) => {
+      if (e.key !== 'Escape') {
+        return;
+      }
+      if (this.#knightUpgradeModalEl && !this.#knightUpgradeModalEl.hidden) {
+        e.preventDefault();
+        this.closeKnightUpgrade();
+        return;
+      }
+      if (this.#marketModalEl && !this.#marketModalEl.hidden) {
+        e.preventDefault();
+        this.closeMarketShop();
+      }
+    };
+    document.addEventListener('keydown', this.#modalEscapeHandler);
+  }
+
+  /**
+   * @param {'health' | 'attack'} kind
+   */
+  #confirmKnightUpgrade(kind) {
+    if (!this.#knightUpgradeCallbacks) {
+      return;
+    }
+    const result = this.#knightUpgradeCallbacks.onUpgrade(kind);
+    if (!result.ok && result.message) {
+      this.showToast(result.message);
+    }
+    this.#refreshKnightUpgradeModal();
+  }
+
+  #refreshKnightUpgradeModal() {
+    if (!this.#knightUpgradeModalEl || !this.#knightUpgradeCallbacks) {
+      return;
+    }
+    const state = this.#knightUpgradeCallbacks.getViewState();
+    const { healthLevel, attackLevel, maxLevel, blacksmithCount, resources } = state;
+
+    const leadEl = document.getElementById('knight-upgrade-lead');
+    if (leadEl) {
+      leadEl.textContent = `Прокачка всех ваших рыцарей. Кузниц: ${blacksmithCount} · макс. уровень каждой характеристики: ${maxLevel} (${KNIGHT_UPGRADE_LEVELS_PER_BLACKSMITH} за кузницу).`;
+    }
+
+    const healthLevelsEl = document.getElementById('knight-upgrade-health-levels');
+    const attackLevelsEl = document.getElementById('knight-upgrade-attack-levels');
+    if (healthLevelsEl) {
+      healthLevelsEl.textContent = `${healthLevel} / ${maxLevel}`;
+    }
+    if (attackLevelsEl) {
+      attackLevelsEl.textContent = `${attackLevel} / ${maxLevel}`;
+    }
+
+    const healthStatEl = document.getElementById('knight-upgrade-health-stat');
+    const attackStatEl = document.getElementById('knight-upgrade-attack-stat');
+    if (healthStatEl) {
+      healthStatEl.textContent = describeKnightUpgradeStat('health', healthLevel);
+    }
+    if (attackStatEl) {
+      attackStatEl.textContent = describeKnightUpgradeStat('attack', attackLevel);
+    }
+
+    const healthCostEl = document.getElementById('knight-upgrade-health-cost');
+    const attackCostEl = document.getElementById('knight-upgrade-attack-cost');
+    const healthBtn = document.getElementById('knight-upgrade-health-btn');
+    const attackBtn = document.getElementById('knight-upgrade-attack-btn');
+
+    if (healthLevel >= maxLevel) {
+      if (healthCostEl) {
+        healthCostEl.textContent = 'Достигнут максимум для ваших кузниц.';
+      }
+      healthBtn?.setAttribute('disabled', '');
+    } else {
+      const next = healthLevel + 1;
+      const cost = formatKnightUpgradeCostLine('health', next);
+      if (healthCostEl) {
+        healthCostEl.textContent = `Следующий уровень (${next}): ${cost}`;
+      }
+      if (canAfford(resources, getKnightUpgradeCost('health', next))) {
+        healthBtn?.removeAttribute('disabled');
+      } else {
+        healthBtn?.setAttribute('disabled', '');
+      }
+    }
+
+    if (attackLevel >= maxLevel) {
+      if (attackCostEl) {
+        attackCostEl.textContent = 'Достигнут максимум для ваших кузниц.';
+      }
+      attackBtn?.setAttribute('disabled', '');
+    } else {
+      const next = attackLevel + 1;
+      const cost = formatKnightUpgradeCostLine('attack', next);
+      if (attackCostEl) {
+        attackCostEl.textContent = `Следующий уровень (${next}): ${cost}`;
+      }
+      if (canAfford(resources, getKnightUpgradeCost('attack', next))) {
+        attackBtn?.removeAttribute('disabled');
+      } else {
+        attackBtn?.setAttribute('disabled', '');
+      }
+    }
+  }
+
+  /**
+   * @param {{
+   *   getViewState: () => {
+   *     healthLevel: number;
+   *     attackLevel: number;
+   *     maxLevel: number;
+   *     blacksmithCount: number;
+   *     resources: import('../constants/resources.js').PlayerResources;
+   *   };
+   *   onUpgrade: (kind: 'health' | 'attack') => { ok: boolean; message?: string };
+   * }} callbacks
+   */
+  openKnightUpgrade(callbacks) {
+    if (!this.#knightUpgradeModalEl) {
+      return;
+    }
+    this.closeMarketShop();
+    this.#knightUpgradeCallbacks = callbacks;
+    this.#knightUpgradeModalEl.hidden = false;
+    this.#knightUpgradeModalEl.setAttribute('aria-hidden', 'false');
+    this.#refreshKnightUpgradeModal();
+    document.getElementById('knight-upgrade-health-btn')?.focus();
+  }
+
+  closeKnightUpgrade() {
+    if (!this.#knightUpgradeModalEl) {
+      return;
+    }
+    this.#knightUpgradeModalEl.hidden = true;
+    this.#knightUpgradeModalEl.setAttribute('aria-hidden', 'true');
+    this.#knightUpgradeCallbacks = null;
   }
 
   #refreshBuildingAffordability() {

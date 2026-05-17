@@ -27,6 +27,10 @@ import {
   PLAYER_BUILDING_TRIANGLE_HEIGHT_PX,
   PLAYER_INDICATOR_COLOR,
 } from '../../constants/player-building-indicator.js';
+import {
+  knightAttackFromUpgradeLevel,
+  knightMaxHpFromUpgradeLevel,
+} from '../../constants/knight-upgrades.js';
 import { TILE_SIZE } from '../../constants/sizes.js';
 import { tiles } from '../../constants/tiles.js';
 
@@ -77,13 +81,25 @@ function resetKnightIds() {
 
 class KnightUnit {
   /**
-   * @param {{ id: number; ownerUserId: string; x: number; y: number }} p
+   * @param {{
+   *   id: number;
+   *   ownerUserId: string;
+   *   x: number;
+   *   y: number;
+   *   healthLevel?: number;
+   *   attackLevel?: number;
+   * }} p
    */
-  constructor({ id, ownerUserId, x, y }) {
+  constructor({ id, ownerUserId, x, y, healthLevel = 0, attackLevel = 0 }) {
     this.id = id;
     this.ownerUserId = ownerUserId;
     this.x = x;
     this.y = y;
+    this.healthLevel = healthLevel;
+    this.attackLevel = attackLevel;
+    this.maxHp = knightMaxHpFromUpgradeLevel(healthLevel);
+    this.hp = this.maxHp;
+    this.attackDamage = knightAttackFromUpgradeLevel(attackLevel);
 
     /** @type {KnightMode} */
     this.mode = 'idle';
@@ -142,11 +158,13 @@ export class KnightSystem {
   /** @type {Set<number>} */
   #selectedIds = new Set();
 
-  /** @type {(anchorTx: number, anchorTy: number, knightOwnerId: string) => void} */
+  /** @type {(anchorTx: number, anchorTy: number, knightOwnerId: string, damage: number) => void} */
   #applyChopHit;
 
   /**
-   * @param {{ applyChopHit: (anchorTx: number, anchorTy: number, knightOwnerId: string) => void }} param0
+   * @param {{
+   *   applyChopHit: (anchorTx: number, anchorTy: number, knightOwnerId: string, damage: number) => void;
+   * }} param0
    */
   constructor({ applyChopHit }) {
     this.#applyChopHit = applyChopHit;
@@ -174,13 +192,46 @@ export class KnightSystem {
   }
 
   /**
-   * @param {{ x: number; y: number; ownerUserId: string }} p
+   * @param {{
+   *   x: number;
+   *   y: number;
+   *   ownerUserId: string;
+   *   healthLevel?: number;
+   *   attackLevel?: number;
+   * }} p
    * @returns {KnightUnit}
    */
-  spawn({ x, y, ownerUserId }) {
-    const unit = new KnightUnit({ id: nextKnightId++, ownerUserId, x, y });
+  spawn({ x, y, ownerUserId, healthLevel = 0, attackLevel = 0 }) {
+    const unit = new KnightUnit({
+      id: nextKnightId++,
+      ownerUserId,
+      x,
+      y,
+      healthLevel,
+      attackLevel,
+    });
     this.#units.push(unit);
     return unit;
+  }
+
+  /**
+   * @param {string} ownerUserId
+   * @param {number} healthLevel
+   * @param {number} attackLevel
+   */
+  applyArmyUpgradesToOwner(ownerUserId, healthLevel, attackLevel) {
+    const maxHp = knightMaxHpFromUpgradeLevel(healthLevel);
+    const attackDamage = knightAttackFromUpgradeLevel(attackLevel);
+    for (const u of this.#units) {
+      if (u.ownerUserId !== ownerUserId) {
+        continue;
+      }
+      u.healthLevel = healthLevel;
+      u.attackLevel = attackLevel;
+      u.maxHp = maxHp;
+      u.hp = maxHp;
+      u.attackDamage = attackDamage;
+    }
   }
 
   /**
@@ -568,7 +619,7 @@ export class KnightSystem {
         u.chopCooldownMs += dtMs;
         if (u.chopCooldownMs >= CHOP_HIT_INTERVAL_MS) {
           u.chopCooldownMs = 0;
-          this.#applyChopHit(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId);
+          this.#applyChopHit(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId, u.attackDamage);
         }
 
         this.#updateFaceTowardWorldPoint(u, {

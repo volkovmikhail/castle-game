@@ -45,7 +45,21 @@
             </ul>
           </section>
 
-          <section class="sidebar__section">
+          <section class="sidebar__section sidebar__section--army">
+            <h2 class="sidebar__section-title">Войска</h2>
+            <ul class="resource-list" aria-label="Прокачка рыцарей">
+              <li class="resource-row">
+                <span class="resource-row__name">Здоровье</span>
+                <span class="resource-row__value" id="army-health-level">0 / 0</span>
+              </li>
+              <li class="resource-row">
+                <span class="resource-row__name">Атака</span>
+                <span class="resource-row__value" id="army-attack-level">0 / 0</span>
+              </li>
+            </ul>
+          </section>
+
+          <section class="sidebar__section sidebar__section--buildings">
             <h2 class="sidebar__section-title">Здание</h2>
             <div class="building-selector" id="building-selector"></div>
           </section>
@@ -118,6 +132,55 @@
             Обменять
           </button>
           <button type="button" class="market-modal__btn" id="market-shop-close" data-market-shop-close>
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="knight-upgrade-modal" class="market-modal" hidden aria-hidden="true">
+      <div class="market-modal__backdrop" data-knight-upgrade-close tabindex="-1"></div>
+      <div
+        class="market-modal__panel market-modal__panel--knight"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="knight-upgrade-title"
+        tabindex="-1"
+      >
+        <h2 id="knight-upgrade-title" class="market-modal__title">Кузница</h2>
+        <p class="market-modal__lead" id="knight-upgrade-lead">
+          Прокачка всех ваших рыцарей. Лимит уровня: 5 за каждую кузницу.
+        </p>
+
+        <div class="knight-upgrade-stats">
+        <div class="knight-upgrade-stat">
+          <div class="knight-upgrade-stat__head">
+            <span class="knight-upgrade-stat__name">Здоровье</span>
+            <span class="knight-upgrade-stat__levels" id="knight-upgrade-health-levels">0 / 0</span>
+          </div>
+          <p class="market-modal__preview" id="knight-upgrade-health-stat">HP: 100</p>
+          <p class="market-modal__preview" id="knight-upgrade-health-cost"></p>
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="knight-upgrade-health-btn">
+            Улучшить здоровье
+          </button>
+        </div>
+
+        <div class="knight-upgrade-stat">
+          <div class="knight-upgrade-stat__head">
+            <span class="knight-upgrade-stat__name">Сила атаки</span>
+            <span class="knight-upgrade-stat__levels" id="knight-upgrade-attack-levels">0 / 0</span>
+          </div>
+          <p class="market-modal__preview" id="knight-upgrade-attack-stat">Урон: 15</p>
+          <p class="market-modal__preview" id="knight-upgrade-attack-cost"></p>
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="knight-upgrade-attack-btn">
+            Улучшить атаку
+          </button>
+        </div>
+
+        </div>
+
+        <div class="market-modal__actions">
+          <button type="button" class="market-modal__btn" id="knight-upgrade-close" data-knight-upgrade-close>
             Закрыть
           </button>
         </div>

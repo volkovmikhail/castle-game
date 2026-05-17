@@ -11,6 +11,9 @@ export const BARN_TOOL_KEY = 'barn';
 /** Жилой дом в панели: случайно `house` / `houseSide` / `houseDouble` (тот же геймплей). */
 export const HOUSE_TOOL_KEY = 'house';
 
+/** Кузница в панели → `houseBlacksmith` (стадии стройки). */
+export const BLACKSMITH_TOOL_KEY = 'blacksmith';
+
 /**
  * Стоимость постройки / найма по ключу инструмента в панели.
  * `uniquePerPlayer`: для этого типа допускается не более одного здания у игрока.
@@ -46,6 +49,11 @@ export const PLACEMENT_COSTS = {
     wood: 60,
     gold: 35,
     wheat: 15,
+  },
+  [BLACKSMITH_TOOL_KEY]: {
+    wood: 90,
+    gold: 55,
+    wheat: 30,
   },
 };
 
