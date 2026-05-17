@@ -1,4 +1,3 @@
-import { registerSpritePostDraw } from '../../engine/sprite-post-draw-registry.js';
 import { PLAYER_PROFILES } from '../../constants/players.js';
 
 const FLAG_FRAME = 8;
@@ -134,7 +133,3 @@ export function drawCastleFlagsFromTilemap(ctx, tileMap, screenX, screenY, timeM
   );
 }
 
-registerSpritePostDraw('castle', (sprite, ctx, tileMap, timeMs, cell) => {
-  const { x, y } = sprite.getPos();
-  drawCastleFlagsFromTilemap(ctx, tileMap, x, y, timeMs, cell?.ownerUserId);
-});

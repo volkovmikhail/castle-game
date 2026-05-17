@@ -1,4 +1,5 @@
 import { isTreeSpriteType } from '../common/grid-path.js';
+import { drawCastleFlagsFromTilemap } from '../game/atmosphere/castle-flags.js';
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
 import {
   PLAYER_BUILDING_TRIANGLE_GAP_PX,
@@ -126,7 +127,9 @@ export class CanvasRenderer {
 
     this.drawSprite(sprite);
 
-    sprite.drawPostEffects(this.ctx, this.tileMap, performance.now(), cell);
+    if (cell.spriteType !== 'castle') {
+      sprite.drawPostEffects(this.ctx, this.tileMap, performance.now(), cell);
+    }
 
     const ent = cell.entity;
     const lastDamagedAtMs =
@@ -157,17 +160,76 @@ export class CanvasRenderer {
       ctx.restore();
     }
 
-    if (
-      showPlayerIndicators &&
-      SHOW_PLAYER_COLOR_TRIANGLE_ABOVE_OWNED_BUILDINGS &&
-      cell.ownerUserId &&
-      cell.ownerUserId === localPlayerUserId &&
-      !isTreeSpriteType(cell.spriteType) &&
-      cell.spriteType !== 'knight'
-    ) {
+  }
+
+  /**
+   * Флаги замков — поверх всего мира (после снега и рыцарей).
+   *
+   * @param {{
+   *   state: Map<string, Cell>;
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   *   timeMs?: number;
+   * }}
+   */
+  drawCastleFlagsOnTop({ state, scrollOffset: { offsetX, offsetY }, timeMs = performance.now() }) {
+    for (const [cords, cell] of state.entries()) {
+      if (!cell.isRenderable || cell.spriteType !== 'castle') {
+        continue;
+      }
+      const [wx, wy] = cords.split(':').map(Number);
+      drawCastleFlagsFromTilemap(
+        this.ctx,
+        this.tileMap,
+        wx + offsetX,
+        wy + offsetY,
+        timeMs,
+        cell.ownerUserId,
+      );
+    }
+  }
+
+  /**
+   * Треугольники над своими зданиями — самый верхний слой (после флагов).
+   *
+   * @param {{
+   *   state: Map<string, Cell>;
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   *   showPlayerIndicators: boolean;
+   *   localPlayerUserId: string | null;
+   * }}
+   */
+  drawPlayerBuildingTrianglesOnTop({
+    state,
+    scrollOffset: { offsetX, offsetY },
+    showPlayerIndicators,
+    localPlayerUserId,
+  }) {
+    if (!showPlayerIndicators || !SHOW_PLAYER_COLOR_TRIANGLE_ABOVE_OWNED_BUILDINGS || !localPlayerUserId) {
+      return;
+    }
+
+    for (const [cords, cell] of state.entries()) {
+      if (!cell.isRenderable) {
+        continue;
+      }
+      if (
+        !cell.ownerUserId ||
+        cell.ownerUserId !== localPlayerUserId ||
+        isTreeSpriteType(cell.spriteType) ||
+        cell.spriteType === 'knight'
+      ) {
+        continue;
+      }
+
+      const tileData = tiles[cell.spriteType];
+      if (!tileData) {
+        continue;
+      }
+
+      const [wx, wy] = cords.split(':').map(Number);
       this.#drawPlayerColorTriangleAboveBuilding({
-        x,
-        y,
+        x: wx + offsetX,
+        y: wy + offsetY,
         width: tileData.width,
         color: PLAYER_INDICATOR_COLOR,
       });

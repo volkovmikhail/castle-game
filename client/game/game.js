@@ -52,7 +52,6 @@ import {
   WORLD_MIN_VISIBLE_EDGE_PX,
   WORLD_WIDTH_PX,
 } from '../constants/world.js';
-import './atmosphere/castle-flags.js';
 import { SnowOverlay } from './atmosphere/snow-overlay.js';
 import { Random } from '../common/random.js';
 import { tryMatureOneSapling, tryMatureOneTreeToBig, tryRegrowOneTree } from './forest-regrowth.js';
@@ -428,9 +427,21 @@ export class Game {
 
     this.snow?.render(this.renderer.ctx, this.controls.getScrollOffset());
 
+    const scrollOffset = this.controls.getScrollOffset();
+    const state = this.stateManager.getState();
+
+    this.renderer.drawCastleFlagsOnTop({ state, scrollOffset });
+
+    this.renderer.drawPlayerBuildingTrianglesOnTop({
+      state,
+      scrollOffset,
+      showPlayerIndicators,
+      localPlayerUserId: this.localPlayer.userId,
+    });
+
     this.#knightSystem.renderLocalPlayerTrianglesOnTop(
       this.renderer.ctx,
-      this.controls.getScrollOffset(),
+      scrollOffset,
       showPlayerIndicators,
       this.localPlayer.userId
     );
