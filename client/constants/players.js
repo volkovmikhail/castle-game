@@ -9,23 +9,63 @@ export const PLAYER_COLORS = {
 export const PLAYER_PROFILES = [
   {
     userId: 'yellow-player',
+    teamId: 'yellow-player',
     title: 'Жёлтый игрок',
     color: PLAYER_COLORS.yellow,
     castleStart: { x: 6 * TILE_SIZE, y: 6 * TILE_SIZE },
   },
   {
     userId: 'blue-player',
+    teamId: 'blue-player',
     title: 'Синий игрок',
     color: PLAYER_COLORS.blue,
     castleStart: { x: 56 * TILE_SIZE, y: 6 * TILE_SIZE },
   },
   {
     userId: 'red-player',
+    teamId: 'red-player',
     title: 'Красный игрок',
     color: PLAYER_COLORS.red,
     castleStart: { x: 31 * TILE_SIZE, y: 56 * TILE_SIZE },
   },
 ];
+
+/**
+ * @param {string | null | undefined} userId
+ * @returns {string | undefined}
+ */
+export function getPlayerTeamId(userId) {
+  if (!userId) {
+    return undefined;
+  }
+  const profile = PLAYER_PROFILES.find((p) => p.userId === userId);
+  return profile?.teamId ?? userId;
+}
+
+/**
+ * @param {string | null | undefined} userIdA
+ * @param {string | null | undefined} userIdB
+ */
+export function arePlayersAllies(userIdA, userIdB) {
+  if (!userIdA || !userIdB) {
+    return false;
+  }
+  if (userIdA === userIdB) {
+    return true;
+  }
+  return getPlayerTeamId(userIdA) === getPlayerTeamId(userIdB);
+}
+
+/**
+ * @param {string | null | undefined} userIdA
+ * @param {string | null | undefined} userIdB
+ */
+export function arePlayersEnemies(userIdA, userIdB) {
+  if (!userIdA || !userIdB) {
+    return false;
+  }
+  return !arePlayersAllies(userIdA, userIdB);
+}
 
 /**
  * @param {string | null | undefined} userId

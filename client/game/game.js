@@ -39,6 +39,7 @@ import {
   GOLD_PER_KNIGHT_COMBINE_PLANTS_CHOP,
   GOLD_PER_KNIGHT_ROCK_CHOP,
   GOLD_PER_KNIGHT_TWO_ROCKS_CHOP,
+  BASE_KNIGHT_SLOTS,
   KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE,
   RESIDENTIAL_HOUSE_COMPLETED_TYPES,
   STORAGE_BONUS_PER_BARN_WHEAT_WOOD,
@@ -47,6 +48,10 @@ import {
 } from '../constants/resources.js';
 import { TILE_SIZE } from '../constants/sizes.js';
 import { TREE_REGROW_INTERVAL_MS } from '../constants/forest-regrowth.js';
+import {
+  TEST_KNIGHTS_ENABLED,
+  TEST_KNIGHT_SPAWNS_NEAR_YELLOW_CASTLE,
+} from '../constants/test-knights.js';
 import {
   WORLD_HEIGHT_PX,
   WORLD_MIN_VISIBLE_EDGE_PX,
@@ -361,6 +366,7 @@ export class Game {
     this.#resetPlayerResources();
     this.#placeInitialCastles();
     this.#enforceStorageCapsAllPlayers();
+    this.#spawnTestKnightsIfEnabled();
 
     this.snow = new SnowOverlay({
       width: rendererSize.width,
@@ -661,12 +667,12 @@ export class Game {
     const max = this.#maxKnightsForPlayer(userId);
     const current = this.#knightSystem.countKnightsForOwner(userId);
     if (current >= max) {
-      return `Лимит рыцарей: ${current}/${max}. Постройте дом (+${KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE} за дом).`;
+      return `Лимит рыцарей: ${current}/${max}. Постройте дом (+${KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE} к лимиту).`;
     }
     return null;
   }
 
-  /** Макс. рыцарей по готовым жилым домам владельца. */
+  /** Макс. рыцарей: база + готовые жилые дома владельца. */
   #maxKnightsForPlayer(userId) {
     let houses = 0;
     for (const [, cell] of this.stateManager.getState()) {
@@ -674,7 +680,7 @@ export class Game {
         houses++;
       }
     }
-    return houses * KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE;
+    return BASE_KNIGHT_SLOTS + houses * KNIGHT_SLOTS_PER_RESIDENTIAL_HOUSE;
   }
 
   /** Лимит пшеницы и дерева по числу готовых сараев владельца на карте. */
@@ -763,6 +769,13 @@ export class Game {
         return 'Нельзя ставить здание поверх дерева. Сначала расчистите место.';
       }
       return 'Нельзя ставить здание на занятую клетку.';
+    }
+
+    if (
+      tileData.type !== 'knight' &&
+      this.#knightSystem.hasKnightInFootprint(x, y, tileData.width, tileData.height)
+    ) {
+      return 'Нельзя ставить здание на рыцаря.';
     }
 
     if (!this.#hasOwnedCellInRadius({ x, y, tileData, radiusCells: MAX_BUILD_DISTANCE_CELLS })) {
@@ -919,6 +932,17 @@ export class Game {
         entity: createBuildingHp(),
       });
     }
+  }
+
+  #spawnTestKnightsIfEnabled() {
+    if (!TEST_KNIGHTS_ENABLED) {
+      return;
+    }
+    const yellowCastle = this.localPlayer.castleStart;
+    this.#knightSystem.spawnTestKnightsNearAnchor(
+      yellowCastle,
+      TEST_KNIGHT_SPAWNS_NEAR_YELLOW_CASTLE
+    );
   }
 
   #processProgressJobs() {

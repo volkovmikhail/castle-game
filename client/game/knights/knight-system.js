@@ -1,12 +1,12 @@
 import {
   findPathTiles,
-  hasStraightWalk,
   isTreeSpriteType,
   isWalkableTile,
   neighborStandTiles8ForFootprint,
   neighborStandTiles8ForTree,
   resolveStructureAnchor,
 } from '../../common/grid-path.js';
+import { drawStructureHpBar } from '../../common/structure-hp-bar.js';
 import {
   KNIGHT_CHOP_FRAME_MS,
   KNIGHT_COLLISION_RADIUS,
@@ -27,6 +27,8 @@ import {
   PLAYER_BUILDING_TRIANGLE_HEIGHT_PX,
   PLAYER_INDICATOR_COLOR,
 } from '../../constants/player-building-indicator.js';
+import { KNIGHT_AUTO_ATTACK_ENEMY_RADIUS_PX } from '../../constants/knight-combat.js';
+import { arePlayersEnemies } from '../../constants/players.js';
 import {
   knightAttackFromUpgradeLevel,
   knightMaxHpFromUpgradeLevel,
@@ -40,6 +42,9 @@ const ARRIVE_EPS_PX = 2.5;
 // Микро-сдвиги от коллизий в толпе не считаем "реальным движением".
 const STALL_MOVE_EPS_PX = 0.28;
 const STALL_IDLE_AFTER_MS = 110;
+/** Если в move почти не сдвигается — пересчитать A* к цели. */
+const STALL_REPATH_AFTER_MS = 450;
+const KNIGHT_STRAIGHT_WALK_SAMPLE_PX = 4;
 /**
  * Макс. зазор между хитбоксом рыцаря и тайлом дерева для удара (пиксели).
  * Центр соседнего тайла даёт ~4px зазор до AABB дерева — 3px было мало и рыцари «замирали» перед деревом.
@@ -99,6 +104,7 @@ class KnightUnit {
     this.attackLevel = attackLevel;
     this.maxHp = knightMaxHpFromUpgradeLevel(healthLevel);
     this.hp = this.maxHp;
+    this.lastDamagedAtMs = 0;
     this.attackDamage = knightAttackFromUpgradeLevel(attackLevel);
 
     /** @type {KnightMode} */
@@ -109,6 +115,9 @@ class KnightUnit {
 
     /** @type {{ x: number; y: number } | null} */
     this.chopTreeTile = null;
+
+    /** @type {number | null} id вражеского рыцаря (цель ближнего боя). */
+    this.chopTargetKnightId = null;
 
     /** Ширина/высота цели удара в px (якорь — chopTreeTile). */
     this.attackFpW = TILE_SIZE;
@@ -185,6 +194,30 @@ export class KnightSystem {
     return keys;
   }
 
+  /**
+   * Есть ли рыцарь на любой клетке отпечатка (левый верх якоря, размеры в px).
+   *
+   * @param {number} anchorX
+   * @param {number} anchorY
+   * @param {number} widthPx
+   * @param {number} heightPx
+   */
+  hasKnightInFootprint(anchorX, anchorY, widthPx, heightPx) {
+    const occupied = this.getOccupiedTileKeys();
+    const cellsWide = widthPx / TILE_SIZE;
+    const cellsHigh = heightPx / TILE_SIZE;
+    for (let ix = 0; ix < cellsWide; ix++) {
+      for (let iy = 0; iy < cellsHigh; iy++) {
+        const tx = anchorX + ix * TILE_SIZE;
+        const ty = anchorY + iy * TILE_SIZE;
+        if (occupied.has(`${tx}:${ty}`)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   clear() {
     this.#units.length = 0;
     this.#selectedIds.clear();
@@ -212,6 +245,25 @@ export class KnightSystem {
     });
     this.#units.push(unit);
     return unit;
+  }
+
+  /**
+   * Тестовый спавн: смещения от якоря (например `castleStart` жёлтого замка).
+   *
+   * @param {{ x: number; y: number }} anchor
+   * @param {{ ownerUserId: string; offsetX: number; offsetY: number; healthLevel?: number; attackLevel?: number }[]} spawns
+   */
+  spawnTestKnightsNearAnchor(anchor, spawns) {
+    const inset = (TILE_SIZE - KNIGHT_W) / 2;
+    for (const s of spawns) {
+      this.spawn({
+        x: anchor.x + s.offsetX + inset,
+        y: anchor.y + s.offsetY + inset,
+        ownerUserId: s.ownerUserId,
+        healthLevel: s.healthLevel ?? 0,
+        attackLevel: s.attackLevel ?? 0,
+      });
+    }
   }
 
   /**
@@ -360,6 +412,19 @@ export class KnightSystem {
       return;
     }
 
+    const enemyKnight = this.#findEnemyKnightAt(worldPx, worldPy, localOwnerId);
+    if (enemyKnight) {
+      this.#orderAttackKnightGroup(
+        selected,
+        enemyKnight,
+        state,
+        worldWidthPx,
+        worldHeightPx,
+        showToast
+      );
+      return;
+    }
+
     const structureAnchor = resolveStructureAnchor(treeTx, treeTy, state);
     if (structureAnchor) {
       const anchorCell = state.get(`${structureAnchor.x}:${structureAnchor.y}`);
@@ -396,9 +461,7 @@ export class KnightSystem {
       if (path !== null) {
         u.path = path;
         u.mode = 'move';
-        u.chopTreeTile = null;
-        u.attackFpW = TILE_SIZE;
-        u.attackFpH = TILE_SIZE;
+        this.#clearMeleeTarget(u);
         u.chopCooldownMs = 0;
         u.walkAnimStartMs = performance.now();
         u.idleNextAltAt = null;
@@ -457,6 +520,7 @@ export class KnightSystem {
       }
 
       u.chopTreeTile = { x: anchorTile.x, y: anchorTile.y };
+      u.chopTargetKnightId = null;
       u.attackFpW = footprintW;
       u.attackFpH = footprintH;
       u.mode = 'move';
@@ -481,6 +545,99 @@ export class KnightSystem {
         u.pixelGoal = null;
       }
     }
+  }
+
+  /**
+   * @param {KnightUnit[]} units
+   * @param {KnightUnit} target
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   * @param {(msg: string) => void} showToast
+   */
+  #orderAttackKnightGroup(units, target, state, worldWidthPx, worldHeightPx, showToast) {
+    for (const u of units) {
+      this.#engageEnemyKnight(u, target, state, worldWidthPx, worldHeightPx, showToast);
+    }
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {KnightUnit} target
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   * @param {(msg: string) => void} [showToast]
+   */
+  #engageEnemyKnight(u, target, state, worldWidthPx, worldHeightPx, showToast = () => {}) {
+    if (!arePlayersEnemies(u.ownerUserId, target.ownerUserId) || target.hp <= 0) {
+      return;
+    }
+    this.#orderChopGroup(
+      [u],
+      { x: target.x, y: target.y },
+      state,
+      worldWidthPx,
+      worldHeightPx,
+      showToast,
+      {
+        footprintW: KNIGHT_W,
+        footprintH: KNIGHT_H,
+        neighborTiles: neighborStandTiles8ForFootprint(target.x, target.y, KNIGHT_W, KNIGHT_H).filter((t) =>
+          isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
+        ),
+        cantApproachMsg: 'К рыцарю не подойти.',
+      }
+    );
+    u.chopTreeTile = null;
+    u.chopTargetKnightId = target.id;
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {number} radiusPx
+   * @returns {KnightUnit | null}
+   */
+  #findNearestEnemyKnightInRadius(u, radiusPx) {
+    if (radiusPx <= 0) {
+      return null;
+    }
+    const ac = u.center();
+    const maxDistSq = radiusPx * radiusPx;
+    let best = null;
+    let bestDistSq = maxDistSq + 1;
+    for (const other of this.#units) {
+      if (other.id === u.id || !arePlayersEnemies(u.ownerUserId, other.ownerUserId) || other.hp <= 0) {
+        continue;
+      }
+      const oc = other.center();
+      const distSq = (oc.x - ac.x) ** 2 + (oc.y - ac.y) ** 2;
+      if (distSq <= maxDistSq && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = other;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   */
+  #tryAutoEngageNearbyEnemyKnight(u, state, worldWidthPx, worldHeightPx) {
+    if (KNIGHT_AUTO_ATTACK_ENEMY_RADIUS_PX <= 0) {
+      return;
+    }
+    if (u.chopTreeTile != null || u.chopTargetKnightId != null) {
+      return;
+    }
+    const enemy = this.#findNearestEnemyKnightInRadius(u, KNIGHT_AUTO_ATTACK_ENEMY_RADIUS_PX);
+    if (!enemy) {
+      return;
+    }
+    this.#engageEnemyKnight(u, enemy, state, worldWidthPx, worldHeightPx);
   }
 
   /**
@@ -584,21 +741,13 @@ export class KnightSystem {
     for (const u of this.#units) {
       u.animMs += dtMs;
 
-      if (u.mode === 'chop' && u.chopTreeTile) {
-        const key = `${u.chopTreeTile.x}:${u.chopTreeTile.y}`;
-        const cell = state.get(key);
-        const fpW = u.attackFpW;
-        const fpH = u.attackFpH;
-        if (
-          !cell ||
-          !cell.isRenderable ||
-          cell.entity?.hp == null ||
-          !this.#canMeleeAnchorCell(cell, u.ownerUserId)
-        ) {
+      this.#tryAutoEngageNearbyEnemyKnight(u, state, worldWidthPx, worldHeightPx);
+
+      if (u.mode === 'chop' && this.#hasMeleeTarget(u)) {
+        const rect = this.#getMeleeTargetRect(u, state);
+        if (!rect || !this.#isMeleeTargetValid(u, state)) {
           u.mode = 'idle';
-          u.chopTreeTile = null;
-          u.attackFpW = TILE_SIZE;
-          u.attackFpH = TILE_SIZE;
+          this.#clearMeleeTarget(u);
           u.path = [];
           u.pixelGoal = null;
           u.walkAnimStartMs = null;
@@ -607,7 +756,7 @@ export class KnightSystem {
           continue;
         }
 
-        if (!this.#isKnightTouchingStructureAabb(u, u.chopTreeTile.x, u.chopTreeTile.y, fpW, fpH)) {
+        if (!this.#isKnightTouchingStructureAabb(u, rect.x, rect.y, rect.w, rect.h)) {
           u.mode = 'move';
           u.path = [];
           u.pixelGoal = null;
@@ -619,26 +768,19 @@ export class KnightSystem {
         u.chopCooldownMs += dtMs;
         if (u.chopCooldownMs >= CHOP_HIT_INTERVAL_MS) {
           u.chopCooldownMs = 0;
-          this.#applyChopHit(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId, u.attackDamage);
+          this.#dealMeleeHit(u, state);
         }
 
-        this.#updateFaceTowardWorldPoint(u, {
-          x: u.chopTreeTile.x + fpW / 2,
-          y: u.chopTreeTile.y + fpH / 2,
-        });
+        this.#updateFaceTowardWorldPoint(u, rect.center);
         continue;
       }
 
-      if (u.mode === 'move' && u.chopTreeTile) {
-        const t = u.chopTreeTile;
-        const cell = state.get(`${t.x}:${t.y}`);
-        const fpW = u.attackFpW;
-        const fpH = u.attackFpH;
+      if (u.mode === 'move' && this.#hasMeleeTarget(u)) {
+        const rect = this.#getMeleeTargetRect(u, state);
         if (
-          cell &&
-          cell.isRenderable &&
-          this.#canMeleeAnchorCell(cell, u.ownerUserId) &&
-          this.#isKnightTouchingStructureAabb(u, t.x, t.y, fpW, fpH)
+          rect &&
+          this.#isMeleeTargetValid(u, state) &&
+          this.#isKnightTouchingStructureAabb(u, rect.x, rect.y, rect.w, rect.h)
         ) {
           u.path = [];
           u.pixelGoal = null;
@@ -650,6 +792,10 @@ export class KnightSystem {
         }
       }
 
+      if (!this.#isKnightWalkable(state, u.x, u.y, worldWidthPx, worldHeightPx)) {
+        this.#pushKnightOutOfSolids(u, state, worldWidthPx, worldHeightPx);
+      }
+
       if (u.mode === 'move' && u.pixelGoal != null) {
         this.#shortcutPathTowardPixelGoal(u, state, worldWidthPx, worldHeightPx);
       }
@@ -658,58 +804,58 @@ export class KnightSystem {
         const next = u.path[0];
         const targetX = next.x + TILE_SIZE / 2 - KNIGHT_HALF_W;
         const targetY = next.y + TILE_SIZE / 2 - KNIGHT_HALF_H;
-        this.#moveToward(u, targetX, targetY, dtMs);
+        this.#moveToward(u, targetX, targetY, dtMs, state, worldWidthPx, worldHeightPx);
 
         const dist = Math.hypot(
           u.x + KNIGHT_HALF_W - (next.x + TILE_SIZE / 2),
           u.y + KNIGHT_HALF_H - (next.y + TILE_SIZE / 2)
         );
         if (dist < ARRIVE_EPS_PX) {
-          u.x = targetX;
-          u.y = targetY;
+          const snapped = this.#clampTopLeftToWorld(targetX, targetY, worldWidthPx, worldHeightPx);
+          if (this.#isKnightWalkable(state, snapped.x, snapped.y, worldWidthPx, worldHeightPx)) {
+            u.x = snapped.x;
+            u.y = snapped.y;
+          }
           u.path.shift();
         }
       } else if (u.pixelGoal != null && u.mode === 'move') {
         const g = u.pixelGoal;
-        this.#moveToward(u, g.x, g.y, dtMs);
+        this.#moveToward(u, g.x, g.y, dtMs, state, worldWidthPx, worldHeightPx);
         const dist = Math.hypot(u.x - g.x, u.y - g.y);
         if (dist < ARRIVE_EPS_PX) {
-          u.x = g.x;
-          u.y = g.y;
+          const snapped = this.#clampTopLeftToWorld(g.x, g.y, worldWidthPx, worldHeightPx);
+          if (this.#isKnightWalkable(state, snapped.x, snapped.y, worldWidthPx, worldHeightPx)) {
+            u.x = snapped.x;
+            u.y = snapped.y;
+          }
           u.pixelGoal = null;
         }
       }
 
-      if (u.path.length === 0 && u.mode === 'move' && u.chopTreeTile && !u.pixelGoal) {
-        const t = u.chopTreeTile;
-        const cell = state.get(`${t.x}:${t.y}`);
-        const fpW = u.attackFpW;
-        const fpH = u.attackFpH;
+      if (u.path.length === 0 && u.mode === 'move' && this.#hasMeleeTarget(u) && !u.pixelGoal) {
+        const rect = this.#getMeleeTargetRect(u, state);
         if (
-          cell &&
-          cell.isRenderable &&
-          this.#canMeleeAnchorCell(cell, u.ownerUserId) &&
-          this.#isKnightTouchingStructureAabb(u, t.x, t.y, fpW, fpH)
+          rect &&
+          this.#isMeleeTargetValid(u, state) &&
+          this.#isKnightTouchingStructureAabb(u, rect.x, rect.y, rect.w, rect.h)
         ) {
           u.mode = 'chop';
           u.chopCooldownMs = 0;
           u.walkAnimStartMs = null;
           u.idleNextAltAt = null;
-        } else if (!cell || cell.entity?.hp == null || !this.#canMeleeAnchorCell(cell, u.ownerUserId)) {
-          u.chopTreeTile = null;
-          u.attackFpW = TILE_SIZE;
-          u.attackFpH = TILE_SIZE;
+        } else if (!rect || !this.#isMeleeTargetValid(u, state)) {
+          this.#clearMeleeTarget(u);
           u.mode = 'idle';
           u.walkAnimStartMs = null;
           u.idleNextAltAt = null;
           u.faceLeft = false;
         } else {
-          this.#seekTowardChopTree(u, t, fpW, fpH, state, dtMs, worldWidthPx, worldHeightPx);
+          this.#seekTowardChopTree(u, { x: rect.x, y: rect.y }, rect.w, rect.h, state, dtMs, worldWidthPx, worldHeightPx);
         }
         continue;
       }
 
-      if (u.mode === 'move' && u.path.length === 0 && !u.chopTreeTile && !u.pixelGoal) {
+      if (u.mode === 'move' && u.path.length === 0 && !this.#hasMeleeTarget(u) && !u.pixelGoal) {
         u.mode = 'idle';
         u.walkAnimStartMs = null;
         u.idleNextAltAt = null;
@@ -724,7 +870,11 @@ export class KnightSystem {
 
       if (u.mode === 'move') {
         if (moved <= STALL_MOVE_EPS_PX) {
+          const stalledBefore = u.stalledMoveMs;
           u.stalledMoveMs += dtMs;
+          if (stalledBefore < STALL_REPATH_AFTER_MS && u.stalledMoveMs >= STALL_REPATH_AFTER_MS) {
+            this.#tryRepathStuckKnight(u, state, worldWidthPx, worldHeightPx);
+          }
           if (u.stalledMoveMs >= STALL_IDLE_AFTER_MS) {
             // Остаёмся в режиме move (чтобы команда не терялась), но анимацию гасим в idle.
             u.walkAnimStartMs = null;
@@ -771,15 +921,59 @@ export class KnightSystem {
       const p1 = u.path[1];
       const mx = p1.x + TILE_SIZE / 2;
       const my = p1.y + TILE_SIZE / 2;
-      if (!hasStraightWalk(state, ccx, ccy, mx, my, worldWidthPx, worldHeightPx)) {
+      if (!this.#hasStraightKnightWalk(state, ccx, ccy, mx, my, worldWidthPx, worldHeightPx)) {
         break;
       }
       u.path.shift();
     }
 
-    if (u.path.length > 0 && hasStraightWalk(state, ccx, ccy, gcx, gcy, worldWidthPx, worldHeightPx)) {
+    if (u.path.length > 0 && this.#hasStraightKnightWalk(state, ccx, ccy, gcx, gcy, worldWidthPx, worldHeightPx)) {
       u.path.length = 0;
     }
+  }
+
+  /**
+   * Прямая видимость с учётом хитбокса рыцаря (не только центра).
+   *
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} ax центр рыцаря
+   * @param {number} ay
+   * @param {number} bx
+   * @param {number} by
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   */
+  #hasStraightKnightWalk(state, ax, ay, bx, by, worldWidthPx, worldHeightPx) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) {
+      return this.#isKnightWalkable(
+        state,
+        ax - KNIGHT_HALF_W,
+        ay - KNIGHT_HALF_H,
+        worldWidthPx,
+        worldHeightPx
+      );
+    }
+    const n = Math.max(1, Math.ceil(len / KNIGHT_STRAIGHT_WALK_SAMPLE_PX));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const cx = ax + dx * t;
+      const cy = ay + dy * t;
+      if (
+        !this.#isKnightWalkable(
+          state,
+          cx - KNIGHT_HALF_W,
+          cy - KNIGHT_HALF_H,
+          worldWidthPx,
+          worldHeightPx
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -859,39 +1053,37 @@ export class KnightSystem {
         return;
       }
 
-      let blocked = null;
-      for (const { tx, ty } of this.#tileOriginsUnderKnight(u.x, u.y)) {
-        if (!isWalkableTile(state, tx, ty, worldWidthPx, worldHeightPx)) {
-          blocked = { tx, ty };
-          break;
-        }
-      }
-      if (!blocked) {
-        break;
-      }
-
-      const { tx, ty } = blocked;
-      let x = u.x;
-      let y = u.y;
-      const overlapX = Math.min(x + KNIGHT_W, tx + TILE_SIZE) - Math.max(x, tx);
-      const overlapY = Math.min(y + KNIGHT_H, ty + TILE_SIZE) - Math.max(y, ty);
-      if (overlapX <= 0 || overlapY <= 0) {
-        break;
-      }
-
+      const x = u.x;
+      const y = u.y;
       const kcx = x + KNIGHT_HALF_W;
       const kcy = y + KNIGHT_HALF_H;
-      const tcx = tx + TILE_SIZE / 2;
-      const tcy = ty + TILE_SIZE / 2;
+      let pushX = 0;
+      let pushY = 0;
 
-      if (overlapX < overlapY) {
-        x += kcx < tcx ? -overlapX : overlapX;
-      } else {
-        y += kcy < tcy ? -overlapY : overlapY;
+      for (const { tx, ty } of this.#tileOriginsUnderKnight(x, y)) {
+        if (isWalkableTile(state, tx, ty, worldWidthPx, worldHeightPx)) {
+          continue;
+        }
+        const overlapX = Math.min(x + KNIGHT_W, tx + TILE_SIZE) - Math.max(x, tx);
+        const overlapY = Math.min(y + KNIGHT_H, ty + TILE_SIZE) - Math.max(y, ty);
+        if (overlapX <= 0 || overlapY <= 0) {
+          continue;
+        }
+        const tcx = tx + TILE_SIZE / 2;
+        const tcy = ty + TILE_SIZE / 2;
+        if (overlapX < overlapY) {
+          pushX += kcx < tcx ? -overlapX : overlapX;
+        } else {
+          pushY += kcy < tcy ? -overlapY : overlapY;
+        }
       }
 
-      u.x = Math.max(0, Math.min(maxX, x));
-      u.y = Math.max(0, Math.min(maxY, y));
+      if (pushX === 0 && pushY === 0) {
+        break;
+      }
+
+      u.x = Math.max(0, Math.min(maxX, x + pushX));
+      u.y = Math.max(0, Math.min(maxY, y + pushY));
     }
   }
 
@@ -1014,6 +1206,165 @@ export class KnightSystem {
   }
 
   /**
+   * @param {KnightUnit} u
+   */
+  #hasMeleeTarget(u) {
+    return u.chopTreeTile != null || u.chopTargetKnightId != null;
+  }
+
+  /**
+   * @param {KnightUnit} u
+   */
+  #clearMeleeTarget(u) {
+    u.chopTreeTile = null;
+    u.chopTargetKnightId = null;
+    u.attackFpW = TILE_SIZE;
+    u.attackFpH = TILE_SIZE;
+  }
+
+  /**
+   * @param {number} id
+   * @returns {KnightUnit | null}
+   */
+  #getUnitById(id) {
+    return this.#units.find((unit) => unit.id === id) ?? null;
+  }
+
+  /**
+   * @param {number} worldPx
+   * @param {number} worldPy
+   * @param {string} localOwnerId
+   * @returns {KnightUnit | null}
+   */
+  #findEnemyKnightAt(worldPx, worldPy, localOwnerId) {
+    for (let i = this.#units.length - 1; i >= 0; i--) {
+      const u = this.#units[i];
+      if (!arePlayersEnemies(localOwnerId, u.ownerUserId) || u.hp <= 0) {
+        continue;
+      }
+      if (
+        worldPx >= u.x &&
+        worldPy >= u.y &&
+        worldPx < u.x + KNIGHT_W &&
+        worldPy < u.y + KNIGHT_H
+      ) {
+        return u;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @returns {{ x: number; y: number; w: number; h: number; center: { x: number; y: number } } | null}
+   */
+  #getMeleeTargetRect(u, state) {
+    if (u.chopTargetKnightId != null) {
+      const target = this.#getUnitById(u.chopTargetKnightId);
+      if (!target) {
+        return null;
+      }
+      return {
+        x: target.x,
+        y: target.y,
+        w: KNIGHT_W,
+        h: KNIGHT_H,
+        center: target.center(),
+      };
+    }
+    if (!u.chopTreeTile) {
+      return null;
+    }
+    const cell = state.get(`${u.chopTreeTile.x}:${u.chopTreeTile.y}`);
+    if (!cell?.isRenderable) {
+      return null;
+    }
+    const fpW = u.attackFpW;
+    const fpH = u.attackFpH;
+    return {
+      x: u.chopTreeTile.x,
+      y: u.chopTreeTile.y,
+      w: fpW,
+      h: fpH,
+      center: { x: u.chopTreeTile.x + fpW / 2, y: u.chopTreeTile.y + fpH / 2 },
+    };
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   */
+  #isMeleeTargetValid(u, state) {
+    if (u.chopTargetKnightId != null) {
+      const target = this.#getUnitById(u.chopTargetKnightId);
+      return target != null && arePlayersEnemies(u.ownerUserId, target.ownerUserId) && target.hp > 0;
+    }
+    if (!u.chopTreeTile) {
+      return false;
+    }
+    const cell = state.get(`${u.chopTreeTile.x}:${u.chopTreeTile.y}`);
+    return !!cell?.isRenderable && this.#canMeleeAnchorCell(cell, u.ownerUserId);
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   */
+  #dealMeleeHit(u, state) {
+    if (u.chopTargetKnightId != null) {
+      const target = this.#getUnitById(u.chopTargetKnightId);
+      if (target) {
+        this.#applyKnightMeleeHit(u.ownerUserId, target, u.attackDamage);
+      }
+      return;
+    }
+    if (u.chopTreeTile) {
+      this.#applyChopHit(u.chopTreeTile.x, u.chopTreeTile.y, u.ownerUserId, u.attackDamage);
+    }
+  }
+
+  /**
+   * @param {string} attackerOwnerId
+   * @param {KnightUnit} target
+   * @param {number} damage
+   */
+  #applyKnightMeleeHit(attackerOwnerId, target, damage) {
+    if (!arePlayersEnemies(attackerOwnerId, target.ownerUserId) || target.hp <= 0) {
+      return;
+    }
+    target.hp -= damage;
+    target.lastDamagedAtMs = performance.now();
+    if (target.hp > 0) {
+      return;
+    }
+    const deadId = target.id;
+    this.#removeUnit(deadId);
+    for (const u of this.#units) {
+      if (u.chopTargetKnightId === deadId) {
+        this.#clearMeleeTarget(u);
+        u.mode = 'idle';
+        u.path = [];
+        u.pixelGoal = null;
+        u.walkAnimStartMs = null;
+        u.idleNextAltAt = null;
+        u.faceLeft = false;
+      }
+    }
+  }
+
+  /**
+   * @param {number} id
+   */
+  #removeUnit(id) {
+    const idx = this.#units.findIndex((u) => u.id === id);
+    if (idx >= 0) {
+      this.#units.splice(idx, 1);
+    }
+    this.#selectedIds.delete(id);
+  }
+
+  /**
    * Рыцарь вплотную к прямоугольнику цели (дерево или отпечаток здания).
    *
    * @param {KnightUnit} u
@@ -1032,8 +1383,11 @@ export class KnightSystem {
    * @param {number} tx
    * @param {number} ty
    * @param {number} dtMs
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
    */
-  #moveToward(u, tx, ty, dtMs) {
+  #moveToward(u, tx, ty, dtMs, state, worldWidthPx, worldHeightPx) {
     const cx = u.x + KNIGHT_HALF_W;
     const cy = u.y + KNIGHT_HALF_H;
     const tcx = tx + KNIGHT_HALF_W;
@@ -1044,11 +1398,68 @@ export class KnightSystem {
     const step = MOVE_SPEED_PX_PER_MS * dtMs;
     const nx = u.x + (dx / len) * Math.min(step, len);
     const ny = u.y + (dy / len) * Math.min(step, len);
-    u.x = nx;
-    u.y = ny;
+
+    if (this.#tryPlaceKnightAt(u, nx, ny, state, worldWidthPx, worldHeightPx)) {
+      const c = this.#clampTopLeftToWorld(nx, ny, worldWidthPx, worldHeightPx);
+      u.x = c.x;
+      u.y = c.y;
+    } else if (this.#tryPlaceKnightAt(u, nx, u.y, state, worldWidthPx, worldHeightPx)) {
+      const c = this.#clampTopLeftToWorld(nx, u.y, worldWidthPx, worldHeightPx);
+      u.x = c.x;
+    } else if (this.#tryPlaceKnightAt(u, u.x, ny, state, worldWidthPx, worldHeightPx)) {
+      const c = this.#clampTopLeftToWorld(u.x, ny, worldWidthPx, worldHeightPx);
+      u.y = c.y;
+    }
 
     if (Math.abs(dx) > 0.02) {
       u.faceLeft = dx < 0;
+    }
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {number} x
+   * @param {number} y
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   */
+  #tryPlaceKnightAt(u, x, y, state, worldWidthPx, worldHeightPx) {
+    const c = this.#clampTopLeftToWorld(x, y, worldWidthPx, worldHeightPx);
+    return this.#isKnightWalkable(state, c.x, c.y, worldWidthPx, worldHeightPx);
+  }
+
+  /**
+   * @param {KnightUnit} u
+   * @param {Map<string, import('../../engine/state/cell.js').Cell>} state
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   */
+  #tryRepathStuckKnight(u, state, worldWidthPx, worldHeightPx) {
+    if (u.pixelGoal) {
+      const gcx = u.pixelGoal.x + KNIGHT_HALF_W;
+      const gcy = u.pixelGoal.y + KNIGHT_HALF_H;
+      const path = findPathTiles(state, u.center(), { x: gcx, y: gcy }, worldWidthPx, worldHeightPx);
+      if (path !== null) {
+        u.path = path;
+        u.stalledMoveMs = 0;
+      }
+      return;
+    }
+    if (u.path.length === 0) {
+      return;
+    }
+    const last = u.path[u.path.length - 1];
+    const path = findPathTiles(
+      state,
+      u.center(),
+      { x: last.x + TILE_SIZE / 2, y: last.y + TILE_SIZE / 2 },
+      worldWidthPx,
+      worldHeightPx
+    );
+    if (path !== null) {
+      u.path = path;
+      u.stalledMoveMs = 0;
     }
   }
 
@@ -1114,6 +1525,15 @@ export class KnightSystem {
         );
       }
       ctx.restore();
+
+      drawStructureHpBar(ctx, {
+        spriteLeft: drawX,
+        spriteTop: drawY,
+        spriteWidth: KNIGHT_W,
+        hp: u.hp,
+        maxHp: u.maxHp,
+        lastDamagedAtMs: u.lastDamagedAtMs,
+      });
 
       if (this.#selectedIds.has(u.id)) {
         ctx.save();
@@ -1189,7 +1609,7 @@ export class KnightSystem {
    * @param {KnightUnit} u
    */
   #pickFrame(u) {
-    if (u.mode === 'chop' && u.chopTreeTile) {
+    if (u.mode === 'chop' && this.#hasMeleeTarget(u)) {
       const i = Math.floor(u.animMs / KNIGHT_CHOP_FRAME_MS) % KNIGHT_FRAMES_CHOP.length;
       return KNIGHT_FRAMES_CHOP[i];
     }

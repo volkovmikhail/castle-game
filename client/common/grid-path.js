@@ -339,13 +339,15 @@ export function resolveStructureAnchor(tx, ty, state) {
  * @returns {{ x: number; y: number }[]}
  */
 export function neighborStandTiles8ForFootprint(anchorPx, anchorPy, widthPx, heightPx) {
-  const tw = widthPx / TILE_SIZE;
-  const th = heightPx / TILE_SIZE;
+  const tx0 = Math.floor(anchorPx / TILE_SIZE) * TILE_SIZE;
+  const ty0 = Math.floor(anchorPy / TILE_SIZE) * TILE_SIZE;
+  const tx1 = Math.floor((anchorPx + widthPx - 1e-6) / TILE_SIZE) * TILE_SIZE;
+  const ty1 = Math.floor((anchorPy + heightPx - 1e-6) / TILE_SIZE) * TILE_SIZE;
   /** @type {Set<string>} */
   const footprint = new Set();
-  for (let i = 0; i < tw; i++) {
-    for (let j = 0; j < th; j++) {
-      footprint.add(`${anchorPx + i * TILE_SIZE}:${anchorPy + j * TILE_SIZE}`);
+  for (let tx = tx0; tx <= tx1; tx += TILE_SIZE) {
+    for (let ty = ty0; ty <= ty1; ty += TILE_SIZE) {
+      footprint.add(`${tx}:${ty}`);
     }
   }
   /** @type {Map<string, { x: number; y: number }>} */

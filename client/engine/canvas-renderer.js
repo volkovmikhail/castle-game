@@ -1,4 +1,5 @@
 import { isTreeSpriteType } from '../common/grid-path.js';
+import { drawStructureHpBar } from '../common/structure-hp-bar.js';
 import { drawCastleFlagsFromTilemap } from '../game/atmosphere/castle-flags.js';
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
 import {
@@ -17,17 +18,6 @@ import {
 } from '../constants/world.js';
 import { Sprite } from './sprite.js';
 import { Cell } from './state/cell.js';
-
-/** Полоска HP над объектом, пока объект повреждён (hp ниже maxHp). */
-const STRUCTURE_HP_BAR_HEIGHT_PX = 1;
-const STRUCTURE_HP_BAR_GAP_ABOVE_PX = 2;
-/**
- * Отступ полоски HP от левого и правого края спрайта (пиксели с каждой стороны).
- * Полоска уже спрайта на `2 * STRUCTURE_HP_BAR_HORIZONTAL_INSET_PX`.
- */
-const STRUCTURE_HP_BAR_HORIZONTAL_INSET_PX = 2;
-/** Скрыть полоску HP, если по объекту не били дольше этого времени (мс). */
-const STRUCTURE_HP_BAR_HIDE_AFTER_IDLE_MS = 5000;
 
 export class CanvasRenderer {
   constructor({ canvas, tileMap }) {
@@ -132,32 +122,15 @@ export class CanvasRenderer {
     }
 
     const ent = cell.entity;
-    const lastDamagedAtMs =
-      ent && typeof ent.lastDamagedAtMs === 'number' ? ent.lastDamagedAtMs : 0;
-    const hpBarRecentEnough =
-      lastDamagedAtMs > 0 &&
-      performance.now() - lastDamagedAtMs < STRUCTURE_HP_BAR_HIDE_AFTER_IDLE_MS;
-
-    if (
-      cell.isRenderable &&
-      ent &&
-      typeof ent.hp === 'number' &&
-      typeof ent.maxHp === 'number' &&
-      ent.hp < ent.maxHp &&
-      hpBarRecentEnough
-    ) {
-      const ratio = Math.max(0, Math.min(1, ent.hp / ent.maxHp));
-      const inset = STRUCTURE_HP_BAR_HORIZONTAL_INSET_PX;
-      const bw = Math.max(1, tileData.width - inset * 2);
-      const bx = x + inset;
-      const by = y - STRUCTURE_HP_BAR_GAP_ABOVE_PX - STRUCTURE_HP_BAR_HEIGHT_PX;
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.fillStyle = 'rgb(0, 0, 0)';
-      ctx.fillRect(bx, by, bw, STRUCTURE_HP_BAR_HEIGHT_PX);
-      ctx.fillStyle = 'rgb(220, 45, 45)';
-      ctx.fillRect(bx, by, Math.max(0, Math.round(bw * ratio)), STRUCTURE_HP_BAR_HEIGHT_PX);
-      ctx.restore();
+    if (cell.isRenderable && ent && typeof ent.hp === 'number' && typeof ent.maxHp === 'number') {
+      drawStructureHpBar(this.ctx, {
+        spriteLeft: x,
+        spriteTop: y,
+        spriteWidth: tileData.width,
+        hp: ent.hp,
+        maxHp: ent.maxHp,
+        lastDamagedAtMs: typeof ent.lastDamagedAtMs === 'number' ? ent.lastDamagedAtMs : 0,
+      });
     }
 
   }
