@@ -1,8 +1,13 @@
 {
   "scripts": {
-    "start": "node server/app.js"
+    "start": "node server/app.js",
+    "test": "node tests/lobby-flow.test.js"
   },
   "dependencies": {
-    "express": "4.19.2"
+    "express": "4.19.2",
+    "socket.io": "4.8.3"
+  },
+  "devDependencies": {
+    "socket.io-client": "4.8.3"
   }
 }

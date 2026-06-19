@@ -4,6 +4,7 @@ export const PLAYER_COLORS = {
   yellow: '#d8c840',
   blue: '#4f7de8',
   red: '#d84848',
+  green: '#5fae5f',
 };
 
 export const PLAYER_PROFILES = [
@@ -27,6 +28,13 @@ export const PLAYER_PROFILES = [
     title: 'Red player',
     color: PLAYER_COLORS.red,
     castleStart: { x: 31 * TILE_SIZE, y: 56 * TILE_SIZE },
+  },
+  {
+    userId: 'green-player',
+    teamId: 'green-player',
+    title: 'Green player',
+    color: PLAYER_COLORS.green,
+    castleStart: { x: 56 * TILE_SIZE, y: 56 * TILE_SIZE },
   },
 ];
 

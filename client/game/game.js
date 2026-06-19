@@ -162,9 +162,10 @@ export class Game {
    *   stateManager: StateManager,
    *   ui: UI,
    *   knightImage: CanvasImageSource,
+   *   localPlayer?: typeof PLAYER_PROFILES[number],
    * }} options
    */
-  constructor({ renderer, controls, stateManager, ui, knightImage }) {
+  constructor({ renderer, controls, stateManager, ui, knightImage, localPlayer }) {
     this.renderer = renderer;
     this.controls = controls;
     this.stateManager = stateManager;
@@ -174,7 +175,9 @@ export class Game {
 
     /** @type {SnowOverlay | null} */
     this.snow = null;
-    this.localPlayer = PLAYER_PROFILES[0];
+    // Идентичность игрока назначает сервер (слот лобби). Локальный фолбэк —
+    // первый профиль (одиночный запуск без мультиплеера).
+    this.localPlayer = localPlayer ?? PLAYER_PROFILES[0];
 
     this.#knightSystem = new KnightSystem({
       applyChopHit: (anchorTx, anchorTy, knightOwnerId, damage) => {

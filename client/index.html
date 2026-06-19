@@ -211,6 +211,63 @@
       </div>
     </div>
 
+    <div id="lobby" class="lobby" hidden>
+      <div class="lobby__panel">
+        <h1 class="lobby__title">Castle</h1>
+        <p class="lobby__subtitle">Online battle · 2–4 players · last one standing wins</p>
+
+        <div class="lobby__status" id="lobby-status">Connecting…</div>
+
+        <div class="lobby__view" id="lobby-view-menu" hidden>
+          <label class="lobby__field">
+            <span class="lobby__field-label">Your name</span>
+            <input type="text" id="lobby-name" class="lobby__input" maxlength="20" placeholder="Player" />
+          </label>
+
+          <button type="button" class="lobby__btn lobby__btn--primary lobby__btn--block" id="lobby-create">
+            Create game
+          </button>
+
+          <div class="lobby__sep"><span>or join by code</span></div>
+
+          <div class="lobby__row">
+            <input type="text" id="lobby-code" class="lobby__input lobby__code-input" maxlength="4" placeholder="CODE" />
+            <button type="button" class="lobby__btn" id="lobby-join">Join</button>
+          </div>
+
+          <p class="lobby__error" id="lobby-error" aria-live="polite"></p>
+        </div>
+
+        <div class="lobby__view" id="lobby-view-room" hidden>
+          <div class="lobby__code-block">
+            <span class="lobby__code-label">Room code</span>
+            <span class="lobby__code" id="lobby-room-code">----</span>
+          </div>
+
+          <ul class="lobby__players" id="lobby-players"></ul>
+
+          <p class="lobby__hint" id="lobby-room-hint"></p>
+
+          <div class="lobby__row lobby__row--actions">
+            <button type="button" class="lobby__btn lobby__btn--primary" id="lobby-ready">Ready</button>
+            <button type="button" class="lobby__btn lobby__btn--primary" id="lobby-start" disabled>Start</button>
+          </div>
+          <button type="button" class="lobby__btn lobby__btn--ghost lobby__btn--block" id="lobby-leave">Leave room</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="game-over" class="lobby" hidden>
+      <div class="lobby__panel">
+        <h1 class="lobby__title" id="game-over-title">Game over</h1>
+        <p class="lobby__hint" id="game-over-text"></p>
+        <button type="button" class="lobby__btn lobby__btn--primary lobby__btn--block" id="game-over-back">
+          Back to lobby
+        </button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="main.js"></script>
   </body>
 </html>

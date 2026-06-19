@@ -5,6 +5,9 @@ import { StateManager } from './engine/state/state-manager.js';
 import { Game } from './game/game.js';
 import { attachCanvasResize, syncCanvasSize } from './ui/canvas-resize.js';
 import { UI } from './ui/ui.js';
+import { Network } from './net/network.js';
+import { Lobby } from './ui/lobby.js';
+import { PLAYER_PROFILES } from './constants/players.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const canvasStage = document.querySelector('.canvas-stage');
@@ -22,19 +25,42 @@ function loadImage(src) {
   });
 }
 
-Promise.all([loadImage('assets/tilemap.png'), loadImage('assets/knight-colored.png')])
-  .then(([tileMap, knightImage]) => {
-    startGame(tileMap, knightImage);
-  })
-  .catch((err) => {
-    console.error(err);
-  });
+/**
+ * Слот, назначенный сервером, -> профиль игрока (по userId). Идентичности
+ * совпадают со server/constants/slots.js, поэтому рендер/команды работают.
+ *
+ * @param {{ userId: string }} you
+ */
+function resolveLocalPlayer(you) {
+  return PLAYER_PROFILES.find((p) => p.userId === you.userId) ?? PLAYER_PROFILES[0];
+}
+
+async function boot() {
+  const [tileMap, knightImage] = await Promise.all([
+    loadImage('assets/tilemap.png'),
+    loadImage('assets/knight-colored.png'),
+  ]);
+
+  const network = new Network();
+  const lobby = new Lobby({ network });
+
+  // Ждём, пока хост стартует партию; сервер пришлёт наш слот.
+  const startPayload = await lobby.waitForGameStart();
+  const localPlayer = resolveLocalPlayer(startPayload.you);
+
+  setupGameOverOverlay(network);
+  startGame({ tileMap, knightImage, localPlayer, network });
+}
 
 /**
- * @param {HTMLImageElement} tileMap
- * @param {HTMLImageElement} knightImage
+ * @param {{
+ *   tileMap: HTMLImageElement,
+ *   knightImage: HTMLImageElement,
+ *   localPlayer: typeof PLAYER_PROFILES[number],
+ *   network: Network,
+ * }} opts
  */
-function startGame(tileMap, knightImage) {
+function startGame({ tileMap, knightImage, localPlayer }) {
   if (canvasStage) {
     syncCanvasSize({ canvas, stage: canvasStage });
   }
@@ -46,7 +72,7 @@ function startGame(tileMap, knightImage) {
 
   controls.init();
 
-  const game = new Game({ renderer, controls, stateManager, ui, knightImage });
+  const game = new Game({ renderer, controls, stateManager, ui, knightImage, localPlayer });
 
   game.init();
 
@@ -55,6 +81,29 @@ function startGame(tileMap, knightImage) {
   }
 
   const gameLoop = new GameLoop({ game });
-
   gameLoop.start();
+
+  // PHASE 2: здесь подписка на network.onSnapshot(...) для рендера серверного
+  // состояния и перевод ввода в network.sendIntent(...) вместо локальных мутаций.
 }
+
+/** @param {Network} network */
+function setupGameOverOverlay(network) {
+  const overlay = document.getElementById('game-over');
+  const text = document.getElementById('game-over-text');
+  const back = document.getElementById('game-over-back');
+  if (!overlay || !text || !back) {
+    return;
+  }
+  network.onGameOver((data) => {
+    text.textContent = data?.winner
+      ? `Winner: ${data.winner.name}`
+      : 'No winner.';
+    overlay.hidden = false;
+  });
+  back.addEventListener('click', () => window.location.reload());
+}
+
+boot().catch((err) => {
+  console.error(err);
+});

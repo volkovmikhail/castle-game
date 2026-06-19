@@ -695,3 +695,255 @@ body {
   width: 100%;
   margin-top: 8px;
 }
+
+/* ===================================================================
+   Лобби / экран финала. Тот же пиксельный бевел, что и у панелей.
+   =================================================================== */
+.lobby {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--c-bg);
+}
+
+.lobby[hidden] {
+  display: none;
+}
+
+.lobby__panel {
+  width: 100%;
+  max-width: 360px;
+  padding: 20px;
+  background: var(--c-panel);
+  box-shadow: var(--bevel-out);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby__title {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 1px;
+  color: var(--c-cream);
+  text-align: center;
+}
+
+.lobby__subtitle {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--c-darker);
+}
+
+.lobby__status {
+  text-align: center;
+  font-size: 12px;
+  color: var(--c-cream);
+  padding: 4px 0;
+}
+
+.lobby__view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby__view[hidden] {
+  display: none;
+}
+
+.lobby__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lobby__field-label {
+  font-size: 12px;
+  color: var(--c-darker);
+}
+
+.lobby__input {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  color: var(--c-cream);
+  background: var(--c-bg);
+  border: none;
+  box-shadow: var(--bevel-in);
+}
+
+.lobby__input:focus {
+  outline: none;
+  box-shadow: var(--bevel-in), 0 0 0 2px var(--c-grass);
+}
+
+.lobby__code-input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-align: center;
+  font-size: 18px;
+}
+
+.lobby__btn {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  color: var(--c-cream);
+  background: var(--c-panel-dark);
+  box-shadow: var(--bevel-out);
+  cursor: pointer;
+  user-select: none;
+}
+
+.lobby__btn:active {
+  box-shadow: var(--bevel-in);
+}
+
+.lobby__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lobby__btn--primary {
+  background: var(--c-mid);
+  color: var(--c-bg);
+}
+
+.lobby__btn--ghost {
+  background: transparent;
+}
+
+.lobby__btn--block {
+  width: 100%;
+}
+
+.lobby__row {
+  display: flex;
+  gap: 8px;
+}
+
+.lobby__row--actions .lobby__btn {
+  flex: 1;
+}
+
+.lobby__sep {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  font-size: 11px;
+  color: var(--c-darker);
+}
+
+.lobby__sep::before,
+.lobby__sep::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--c-panel-dark);
+}
+
+.lobby__sep span {
+  padding: 0 8px;
+}
+
+.lobby__error {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--c-red, #d84848);
+  text-align: center;
+}
+
+.lobby__code-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  background: var(--c-bg);
+  box-shadow: var(--bevel-in);
+}
+
+.lobby__code-label {
+  font-size: 11px;
+  color: var(--c-darker);
+}
+
+.lobby__code {
+  font-size: 32px;
+  letter-spacing: 8px;
+  color: var(--c-grass);
+}
+
+.lobby__players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lobby__player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--c-panel-dark);
+  box-shadow: var(--bevel-in);
+}
+
+.lobby__player-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 2px var(--c-black);
+}
+
+.lobby__player-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--c-cream);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby__player-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.lobby__tag {
+  font-size: 10px;
+  padding: 2px 4px;
+  color: var(--c-bg);
+}
+
+.lobby__tag--host {
+  background: var(--c-cream);
+}
+
+.lobby__tag--ready {
+  background: var(--c-grass);
+}
+
+.lobby__tag--wait {
+  background: var(--c-darker);
+  color: var(--c-cream);
+}
+
+.lobby__hint {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--c-cream);
+  text-align: center;
+}
