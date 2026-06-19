@@ -4,6 +4,7 @@ import {
   BARN_TOOL_KEY,
   BLACKSMITH_TOOL_KEY,
   HOUSE_TOOL_KEY,
+  KNIGHT_TOOL_KEY,
   canAfford,
   formatCostLineForTool,
   getNumericCost,
@@ -28,7 +29,7 @@ export class UI {
    */
   static #getBuildingLabel(key) {
     if (key === 'knight') {
-      return 'Рыцарь';
+      return 'Knight';
     }
     const trimmed = key.replace(/^house/, '');
     const base = trimmed.length > 0 ? trimmed : key;
@@ -37,9 +38,9 @@ export class UI {
   }
 
   /**
-   * @type {string}
+   * @type {string | null}
    */
-  #selectedBuilding = DEFAULT_BUILDING_KEY;
+  #selectedBuilding = null;
 
   /**
    * @type {HTMLElement | null}
@@ -48,6 +49,11 @@ export class UI {
   #playerColorDotEl = null;
   #playerColorLabelEl = null;
   #toastRootEl = null;
+  #sidebarBuildBtnEl = null;
+  #sidebarTrainKnightBtnEl = null;
+  #sidebarTrainKnightCostEl = null;
+  /** @type {HTMLElement | null} */
+  #buildModalEl = null;
   #resourceWheatEl = null;
   #resourceWoodEl = null;
   #resourceGoldEl = null;
@@ -111,6 +117,28 @@ export class UI {
     this.#resourceKnightsEl = document.getElementById('resource-knights');
     this.#armyHealthLevelEl = document.getElementById('army-health-level');
     this.#armyAttackLevelEl = document.getElementById('army-attack-level');
+    this.#sidebarBuildBtnEl = document.getElementById('sidebar-build-btn');
+    this.#sidebarTrainKnightBtnEl = document.getElementById('sidebar-train-knight-btn');
+    this.#sidebarTrainKnightCostEl = document.getElementById('sidebar-train-knight-cost');
+    if (this.#sidebarTrainKnightCostEl) {
+      this.#sidebarTrainKnightCostEl.textContent = formatCostLineForTool(KNIGHT_TOOL_KEY);
+    }
+
+    this.#sidebarBuildBtnEl?.addEventListener('click', () => {
+      if (this.#selectedBuilding !== null && this.#selectedBuilding !== KNIGHT_TOOL_KEY) {
+        this.#cancelPlacement();
+      } else {
+        this.openBuildModal();
+      }
+    });
+
+    this.#sidebarTrainKnightBtnEl?.addEventListener('click', () => {
+      if (this.#selectedBuilding === KNIGHT_TOOL_KEY) {
+        this.#cancelPlacement();
+      } else {
+        this.#armBuilding(KNIGHT_TOOL_KEY);
+      }
+    });
 
     const root = document.getElementById('building-selector');
     if (!root) {
@@ -147,6 +175,11 @@ export class UI {
       item.style.setProperty('--preview-scale', `${previewScale}`);
       item.style.setProperty('--preview-pad', `${UI.#previewPadding}px`);
 
+      const previewWrap = document.createElement('div');
+      previewWrap.className = 'building-preview-wrap';
+      previewWrap.style.width = `${spriteSide * previewScale + UI.#previewPadding * 2}px`;
+      previewWrap.style.height = `${spriteSide * previewScale + UI.#previewPadding * 2}px`;
+
       const preview = document.createElement('div');
       preview.className = externalSprite ? 'building-preview building-preview--knight' : 'building-preview';
       preview.style.width = `${spriteW}px`;
@@ -156,6 +189,7 @@ export class UI {
       } else {
         preview.style.backgroundPosition = '0 -16px';
       }
+      previewWrap.appendChild(preview);
 
       const meta = document.createElement('div');
       meta.className = 'building-selector-item__meta';
@@ -175,17 +209,19 @@ export class UI {
       meta.appendChild(label);
       meta.appendChild(cost);
 
-      item.appendChild(preview);
+      item.appendChild(previewWrap);
       item.appendChild(meta);
       root.appendChild(item);
 
       item.addEventListener('click', () => {
         if (item.classList.contains('building-selector-item--disabled')) {
-          this.showToast('Недостаточно ресурсов.');
+          this.showToast('Not enough resources.');
           return;
         }
         this.#selectedBuilding = key;
         this.#setSelectedItem(item);
+        this.closeBuildModal();
+        this.#updateActionButtonsState();
       });
     }
 
@@ -194,9 +230,83 @@ export class UI {
       this.#setSelectedItem(initial);
     }
 
+    this.#initBuildModal();
     this.#initMarketShopModal();
     this.#initKnightUpgradeModal();
     this.#initModalEscapeHandler();
+  }
+
+  #initBuildModal() {
+    this.#buildModalEl = document.getElementById('build-modal');
+    if (!this.#buildModalEl) {
+      return;
+    }
+    const close = () => this.closeBuildModal();
+    for (const el of this.#buildModalEl.querySelectorAll('[data-build-modal-close]')) {
+      el.addEventListener('click', close);
+    }
+  }
+
+  openBuildModal() {
+    if (!this.#buildModalEl) {
+      return;
+    }
+    this.#buildModalEl.hidden = false;
+    this.#buildModalEl.setAttribute('aria-hidden', 'false');
+  }
+
+  closeBuildModal() {
+    if (!this.#buildModalEl) {
+      return;
+    }
+    this.#buildModalEl.hidden = true;
+    this.#buildModalEl.setAttribute('aria-hidden', 'true');
+  }
+
+  /**
+   * Выходит из режима постройки (после успешной установки здания). Для рыцарей не вызывается —
+   * режим найма остаётся активным, чтобы можно было ставить их подряд без повторного клика.
+   */
+  exitBuildMode() {
+    this.#cancelPlacement();
+  }
+
+  /**
+   * @param {string} key
+   */
+  #armBuilding(key) {
+    this.#selectedBuilding = key;
+    this.#clearSelectedItem();
+    this.closeBuildModal();
+    this.#updateActionButtonsState();
+  }
+
+  #cancelPlacement() {
+    this.#selectedBuilding = null;
+    this.#clearSelectedItem();
+    this.#updateActionButtonsState();
+  }
+
+  #clearSelectedItem() {
+    if (this.#selectedItemEl) {
+      this.#selectedItemEl.classList.remove('building-selector-item--selected');
+      this.#selectedItemEl = null;
+    }
+  }
+
+  #updateActionButtonsState() {
+    const isKnight = this.#selectedBuilding === KNIGHT_TOOL_KEY;
+    const isOtherBuilding = this.#selectedBuilding !== null && !isKnight;
+
+    if (this.#sidebarBuildBtnEl) {
+      this.#sidebarBuildBtnEl.textContent = isOtherBuilding ? 'Cancel' : 'Build';
+      this.#sidebarBuildBtnEl.classList.toggle('sidebar-build-btn--cancel', isOtherBuilding);
+    }
+
+    if (this.#sidebarTrainKnightBtnEl) {
+      this.#sidebarTrainKnightBtnEl.textContent = isKnight ? 'Cancel' : 'Train knight';
+      this.#sidebarTrainKnightBtnEl.classList.toggle('sidebar-build-btn--cancel', isKnight);
+    }
   }
 
   #refreshMarketShopPreview() {
@@ -221,11 +331,11 @@ export class UI {
     previewEl.textContent = getShopExchangePreviewLine(kind, qty, resources);
 
     if (kind === 'wheatToGold') {
-      captionEl.textContent = 'Количество пшеницы (отдаёте)';
+      captionEl.textContent = 'Wheat amount (you give)';
     } else if (kind === 'woodToGold') {
-      captionEl.textContent = 'Количество дерева (отдаёте)';
+      captionEl.textContent = 'Wood amount (you give)';
     } else {
-      captionEl.textContent = 'Золото (тратите)';
+      captionEl.textContent = 'Gold (you spend)';
     }
   }
 
@@ -419,6 +529,16 @@ export class UI {
       if (this.#marketModalEl && !this.#marketModalEl.hidden) {
         e.preventDefault();
         this.closeMarketShop();
+        return;
+      }
+      if (this.#buildModalEl && !this.#buildModalEl.hidden) {
+        e.preventDefault();
+        this.closeBuildModal();
+        return;
+      }
+      if (this.#selectedBuilding !== null) {
+        e.preventDefault();
+        this.#cancelPlacement();
       }
     };
     document.addEventListener('keydown', this.#modalEscapeHandler);
@@ -447,7 +567,7 @@ export class UI {
 
     const leadEl = document.getElementById('knight-upgrade-lead');
     if (leadEl) {
-      leadEl.textContent = `Прокачка всех ваших рыцарей. Кузниц: ${blacksmithCount} · макс. уровень каждой характеристики: ${maxLevel} (${KNIGHT_UPGRADE_LEVELS_PER_BLACKSMITH} за кузницу).`;
+      leadEl.textContent = `Upgrade all your knights. Blacksmiths: ${blacksmithCount} · max level per stat: ${maxLevel} (${KNIGHT_UPGRADE_LEVELS_PER_BLACKSMITH} per blacksmith).`;
     }
 
     const healthLevelsEl = document.getElementById('knight-upgrade-health-levels');
@@ -475,14 +595,14 @@ export class UI {
 
     if (healthLevel >= maxLevel) {
       if (healthCostEl) {
-        healthCostEl.textContent = 'Достигнут максимум для ваших кузниц.';
+        healthCostEl.textContent = 'Max level reached for your blacksmiths.';
       }
       healthBtn?.setAttribute('disabled', '');
     } else {
       const next = healthLevel + 1;
       const cost = formatKnightUpgradeCostLine('health', next);
       if (healthCostEl) {
-        healthCostEl.textContent = `Следующий уровень (${next}): ${cost}`;
+        healthCostEl.textContent = `Next level (${next}): ${cost}`;
       }
       if (canAfford(resources, getKnightUpgradeCost('health', next))) {
         healthBtn?.removeAttribute('disabled');
@@ -493,14 +613,14 @@ export class UI {
 
     if (attackLevel >= maxLevel) {
       if (attackCostEl) {
-        attackCostEl.textContent = 'Достигнут максимум для ваших кузниц.';
+        attackCostEl.textContent = 'Max level reached for your blacksmiths.';
       }
       attackBtn?.setAttribute('disabled', '');
     } else {
       const next = attackLevel + 1;
       const cost = formatKnightUpgradeCostLine('attack', next);
       if (attackCostEl) {
-        attackCostEl.textContent = `Следующий уровень (${next}): ${cost}`;
+        attackCostEl.textContent = `Next level (${next}): ${cost}`;
       }
       if (canAfford(resources, getKnightUpgradeCost('attack', next))) {
         attackBtn?.removeAttribute('disabled');

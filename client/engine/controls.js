@@ -32,6 +32,8 @@ export class Controls {
   #isMouseDown = false;
   /** @type {boolean} */
   #isPanning = false;
+  /** ПКМ зажата: тянем — рамка выделения (как Shift+ЛКМ); просто клик — приказ юнитам. */
+  #isRightMouseDown = false;
   /** Shift зажат в момент ЛКМ — перетаскивание = рамка выделения; без Shift = панорама камеры. */
   #dragStartedWithShift = false;
   #startX;
@@ -65,6 +67,13 @@ export class Controls {
   #lastLeftClickShift = false;
   #isSpacePressed = false;
   #pendingSelectAllKnights = false;
+
+  /** @type {{ x: number; y: number } | null} последняя позиция мыши относительно канваса. */
+  #lastCanvasX = null;
+  #lastCanvasY = null;
+
+  /** Множитель чувствительности скролла трекпада/колеса. */
+  static #WHEEL_SENSITIVITY = 0.4;
 
   init() {
     this.setViewportSize({ width: this.canvas.width, height: this.canvas.height });
@@ -109,15 +118,40 @@ export class Controls {
       event.preventDefault();
     });
 
+    this.canvas.addEventListener(
+      'wheel',
+      (event) => {
+        // Пинч-зум на трекпаде приходит как wheel с ctrlKey — не используем его для панорамы.
+        if (event.ctrlKey) return;
+        event.preventDefault();
+        this.#setScrollOffset({
+          offsetX: this.#scrollOffsetX - event.deltaX * Controls.#WHEEL_SENSITIVITY,
+          offsetY: this.#scrollOffsetY - event.deltaY * Controls.#WHEEL_SENSITIVITY,
+        });
+
+        if (this.#lastCanvasX != null && this.#lastCanvasY != null) {
+          const { tx, ty } = this.#calculateTileSizedCoords({
+            canvasX: this.#lastCanvasX,
+            canvasY: this.#lastCanvasY,
+          });
+          this.#setSelectedCoords({ tx, ty, x: this.#lastCanvasX, y: this.#lastCanvasY });
+        }
+      },
+      { passive: false }
+    );
+
     this.canvas.addEventListener('mousemove', (event) => {
       const cords = this.#calculateSelectorCoords(event);
+      this.#lastCanvasX = cords.x;
+      this.#lastCanvasY = cords.y;
       if (this.#isPanning && !this.#dragStartedWithShift) {
         const offset = this.#calculateOffset(event);
 
         this.#setScrollOffset(offset);
       }
 
-      if (this.#isMouseDown && this.#dragStartedWithShift && this.#marqueeWorldStart) {
+      const isMarqueeDragging = (this.#isMouseDown && this.#dragStartedWithShift) || this.#isRightMouseDown;
+      if (isMarqueeDragging && this.#marqueeWorldStart) {
         const { x, y } = this.#calculateCanvasRelativeCoords(event);
         const wx = x - this.#scrollOffsetX;
         const wy = y - this.#scrollOffsetY;
@@ -133,6 +167,19 @@ export class Controls {
     });
 
     this.canvas.addEventListener('mousedown', (event) => {
+      if (event.button === 2) {
+        const { x, y } = this.#calculateCanvasRelativeCoords(event);
+        this.#startX = event.clientX;
+        this.#startY = event.clientY;
+        this.#isRightMouseDown = true;
+        const wx = x - this.#scrollOffsetX;
+        const wy = y - this.#scrollOffsetY;
+        this.#marqueeWorldStart = { wx, wy };
+        this.#marqueeWorldCurrent = { wx, wy };
+        this.#marqueeExceededThreshold = false;
+        return;
+      }
+
       if (event.button !== 0) {
         return;
       }
@@ -163,11 +210,27 @@ export class Controls {
 
     this.canvas.addEventListener('mouseup', (event) => {
       if (event.button === 2) {
-        const { x, y } = this.#calculateCanvasRelativeCoords(event);
-        this.#pendingRightWorld = {
-          wx: x - this.#scrollOffsetX,
-          wy: y - this.#scrollOffsetY,
-        };
+        if (this.#marqueeExceededThreshold && this.#marqueeWorldStart && this.#marqueeWorldCurrent) {
+          const a = this.#marqueeWorldStart;
+          const b = this.#marqueeWorldCurrent;
+          this.#pendingMarquee = {
+            minX: Math.min(a.wx, b.wx),
+            minY: Math.min(a.wy, b.wy),
+            maxX: Math.max(a.wx, b.wx),
+            maxY: Math.max(a.wy, b.wy),
+          };
+        } else {
+          const { x, y } = this.#calculateCanvasRelativeCoords(event);
+          this.#pendingRightWorld = {
+            wx: x - this.#scrollOffsetX,
+            wy: y - this.#scrollOffsetY,
+          };
+        }
+        this.#isRightMouseDown = false;
+        this.#marqueeWorldStart = null;
+        this.#marqueeWorldCurrent = null;
+        this.#marqueeExceededThreshold = false;
+        return;
       }
       if (event.button === 0) {
         if (this.#dragStartedWithShift && this.#marqueeExceededThreshold && this.#marqueeWorldStart && this.#marqueeWorldCurrent) {
@@ -292,8 +355,8 @@ export class Controls {
     const minOffsetY = -WORLD_HEIGHT_PX + WORLD_MIN_VISIBLE_EDGE_PX;
     const maxOffsetY = this.#viewportHeight - WORLD_MIN_VISIBLE_EDGE_PX;
 
-    this.#scrollOffsetX = Math.min(Math.max(offsetX, minOffsetX), maxOffsetX);
-    this.#scrollOffsetY = Math.min(Math.max(offsetY, minOffsetY), maxOffsetY);
+    this.#scrollOffsetX = Math.round(Math.min(Math.max(offsetX, minOffsetX), maxOffsetX));
+    this.#scrollOffsetY = Math.round(Math.min(Math.max(offsetY, minOffsetY), maxOffsetY));
   }
 
   getScrollOffset() {
@@ -352,7 +415,8 @@ export class Controls {
    * @returns {{ minX: number; minY: number; maxX: number; maxY: number } | null}
    */
   getMarqueeDraftWorldRect() {
-    if (!this.#isMouseDown || !this.#dragStartedWithShift || !this.#marqueeExceededThreshold) {
+    const isMarqueeDragging = (this.#isMouseDown && this.#dragStartedWithShift) || this.#isRightMouseDown;
+    if (!isMarqueeDragging || !this.#marqueeExceededThreshold) {
       return null;
     }
     if (!this.#marqueeWorldStart || !this.#marqueeWorldCurrent) {

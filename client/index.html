@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,65 +9,67 @@
   </head>
   <body>
     <div class="app-layout">
-      <aside class="sidebar" aria-label="Панель управления">
+      <aside class="sidebar" aria-label="Control panel">
         <div class="sidebar__inner">
           <header class="sidebar__brand">
             <span class="sidebar__title">Castle</span>
           </header>
 
           <section class="sidebar__section">
-            <h2 class="sidebar__section-title">Игрок</h2>
+            <h2 class="sidebar__section-title">Player</h2>
             <div class="player-badge" id="player-badge">
               <span class="player-badge__dot" id="player-color-dot" aria-hidden="true"></span>
-              <span class="player-badge__label" id="player-color-label">Не выбран</span>
+              <span class="player-badge__label" id="player-color-label">Not selected</span>
             </div>
           </section>
 
           <section class="sidebar__section">
-            <h2 class="sidebar__section-title">Ресурсы</h2>
-            <ul class="resource-list" aria-label="Ресурсы игрока">
+            <h2 class="sidebar__section-title">Resources</h2>
+            <ul class="resource-list" aria-label="Player resources">
               <li class="resource-row">
-                <span class="resource-row__name">Пшеница</span>
+                <span class="resource-row__name">Wheat</span>
                 <span class="resource-row__value" id="resource-wheat">0</span>
               </li>
               <li class="resource-row">
-                <span class="resource-row__name">Дерево</span>
+                <span class="resource-row__name">Wood</span>
                 <span class="resource-row__value" id="resource-wood">0</span>
               </li>
               <li class="resource-row">
-                <span class="resource-row__name">Золото</span>
+                <span class="resource-row__name">Gold</span>
                 <span class="resource-row__value" id="resource-gold">0</span>
               </li>
               <li class="resource-row">
-                <span class="resource-row__name">Рыцари</span>
+                <span class="resource-row__name">Knights</span>
                 <span class="resource-row__value" id="resource-knights">0 / 0</span>
               </li>
             </ul>
           </section>
 
           <section class="sidebar__section sidebar__section--army">
-            <h2 class="sidebar__section-title">Войска</h2>
-            <ul class="resource-list" aria-label="Прокачка рыцарей">
+            <h2 class="sidebar__section-title">Army</h2>
+            <ul class="resource-list" aria-label="Knight upgrades">
               <li class="resource-row">
-                <span class="resource-row__name">Здоровье</span>
+                <span class="resource-row__name">Health</span>
                 <span class="resource-row__value" id="army-health-level">0 / 0</span>
               </li>
               <li class="resource-row">
-                <span class="resource-row__name">Атака</span>
+                <span class="resource-row__name">Attack</span>
                 <span class="resource-row__value" id="army-attack-level">0 / 0</span>
               </li>
             </ul>
+            <button type="button" class="sidebar-build-btn" id="sidebar-train-knight-btn">Train knight</button>
+            <span class="sidebar-build-cost" id="sidebar-train-knight-cost"></span>
           </section>
 
           <section class="sidebar__section sidebar__section--buildings">
-            <h2 class="sidebar__section-title">Здание</h2>
-            <div class="building-selector" id="building-selector"></div>
+            <h2 class="sidebar__section-title">Building</h2>
+            <button type="button" class="sidebar-build-btn" id="sidebar-build-btn">Build</button>
           </section>
         </div>
       </aside>
 
       <main class="canvas-stage">
-        <canvas id="c" aria-label="Игровое поле"></canvas>
+        <canvas id="c" aria-label="Game field"></canvas>
       </main>
     </div>
     <div class="ui-toast-root" id="ui-toast-root" aria-live="polite" aria-atomic="true"></div>
@@ -81,33 +83,33 @@
         aria-labelledby="market-shop-title"
         tabindex="-1"
       >
-        <h2 id="market-shop-title" class="market-modal__title">Магазин</h2>
-        <p class="market-modal__lead">Выберите обмен и количество.</p>
+        <h2 id="market-shop-title" class="market-modal__title">Market</h2>
+        <p class="market-modal__lead">Choose exchange direction and amount.</p>
 
         <fieldset class="market-modal__types">
-          <legend class="market-modal__legend">Направление обмена</legend>
+          <legend class="market-modal__legend">Exchange direction</legend>
           <label class="market-modal__radio">
             <input type="radio" name="market-exchange" value="wheatToGold" checked />
-            <span>Пшеница → золото</span>
+            <span>Wheat → gold</span>
           </label>
           <label class="market-modal__radio">
             <input type="radio" name="market-exchange" value="woodToGold" />
-            <span>Дерево → золото</span>
+            <span>Wood → gold</span>
           </label>
           <label class="market-modal__radio">
             <input type="radio" name="market-exchange" value="goldToWood" />
-            <span>Золото → дерево</span>
+            <span>Gold → wood</span>
           </label>
           <label class="market-modal__radio">
             <input type="radio" name="market-exchange" value="goldToWheat" />
-            <span>Золото → пшеница</span>
+            <span>Gold → wheat</span>
           </label>
         </fieldset>
 
         <div class="market-modal__qty-block">
-          <span class="market-modal__qty-label" id="market-shop-qty-caption">Количество (отдаёте)</span>
+          <span class="market-modal__qty-label" id="market-shop-qty-caption">Amount (you give)</span>
           <div class="market-modal__qty-row">
-            <button type="button" class="market-modal__step-btn" id="market-shop-qty-minus" aria-label="Минус 10">
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-minus" aria-label="Minus 10">
               −10
             </button>
             <input
@@ -119,7 +121,7 @@
               value="10"
               inputmode="numeric"
             />
-            <button type="button" class="market-modal__step-btn" id="market-shop-qty-plus" aria-label="Плюс 10">
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-plus" aria-label="Plus 10">
               +10
             </button>
           </div>
@@ -129,10 +131,32 @@
 
         <div class="market-modal__actions">
           <button type="button" class="market-modal__btn market-modal__btn--primary" id="market-shop-confirm">
-            Обменять
+            Exchange
           </button>
           <button type="button" class="market-modal__btn" id="market-shop-close" data-market-shop-close>
-            Закрыть
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="build-modal" class="market-modal" hidden aria-hidden="true">
+      <div class="market-modal__backdrop" data-build-modal-close tabindex="-1"></div>
+      <div
+        class="market-modal__panel market-modal__panel--build"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="build-modal-title"
+        tabindex="-1"
+      >
+        <h2 id="build-modal-title" class="market-modal__title">Build</h2>
+        <p class="market-modal__lead">Choose what to build.</p>
+
+        <div class="building-selector building-selector--grid" id="building-selector"></div>
+
+        <div class="market-modal__actions">
+          <button type="button" class="market-modal__btn" id="build-modal-close" data-build-modal-close>
+            Close
           </button>
         </div>
       </div>
@@ -147,33 +171,33 @@
         aria-labelledby="knight-upgrade-title"
         tabindex="-1"
       >
-        <h2 id="knight-upgrade-title" class="market-modal__title">Кузница</h2>
+        <h2 id="knight-upgrade-title" class="market-modal__title">Blacksmith</h2>
         <p class="market-modal__lead" id="knight-upgrade-lead">
-          Прокачка всех ваших рыцарей. Лимит уровня: 5 за каждую кузницу.
+          Upgrade all your knights. Level limit: 5 per blacksmith.
         </p>
 
         <div class="knight-upgrade-stats">
         <div class="knight-upgrade-stat">
           <div class="knight-upgrade-stat__head">
-            <span class="knight-upgrade-stat__name">Здоровье</span>
+            <span class="knight-upgrade-stat__name">Health</span>
             <span class="knight-upgrade-stat__levels" id="knight-upgrade-health-levels">0 / 0</span>
           </div>
           <p class="market-modal__preview" id="knight-upgrade-health-stat">HP: 100</p>
           <p class="market-modal__preview" id="knight-upgrade-health-cost"></p>
           <button type="button" class="market-modal__btn market-modal__btn--primary" id="knight-upgrade-health-btn">
-            Улучшить здоровье
+            Upgrade health
           </button>
         </div>
 
         <div class="knight-upgrade-stat">
           <div class="knight-upgrade-stat__head">
-            <span class="knight-upgrade-stat__name">Сила атаки</span>
+            <span class="knight-upgrade-stat__name">Attack power</span>
             <span class="knight-upgrade-stat__levels" id="knight-upgrade-attack-levels">0 / 0</span>
           </div>
-          <p class="market-modal__preview" id="knight-upgrade-attack-stat">Урон: 15</p>
+          <p class="market-modal__preview" id="knight-upgrade-attack-stat">Damage: 15</p>
           <p class="market-modal__preview" id="knight-upgrade-attack-cost"></p>
           <button type="button" class="market-modal__btn market-modal__btn--primary" id="knight-upgrade-attack-btn">
-            Улучшить атаку
+            Upgrade attack
           </button>
         </div>
 
@@ -181,7 +205,7 @@
 
         <div class="market-modal__actions">
           <button type="button" class="market-modal__btn" id="knight-upgrade-close" data-knight-upgrade-close>
-            Закрыть
+            Close
           </button>
         </div>
       </div>

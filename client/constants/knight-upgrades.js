@@ -72,13 +72,13 @@ export function formatKnightUpgradeCostLine(kind, targetLevel) {
   const c = getKnightUpgradeCost(kind, targetLevel);
   const parts = [];
   if (c.wheat > 0) {
-    parts.push(`${c.wheat} пшеницы`);
+    parts.push(`${c.wheat} wheat`);
   }
   if (c.wood > 0) {
-    parts.push(`${c.wood} дерева`);
+    parts.push(`${c.wood} wood`);
   }
   if (c.gold > 0) {
-    parts.push(`${c.gold} золота`);
+    parts.push(`${c.gold} gold`);
   }
   return parts.join(' · ');
 }
@@ -92,5 +92,5 @@ export function describeKnightUpgradeStat(kind, level) {
   if (kind === 'health') {
     return `HP: ${knightMaxHpFromUpgradeLevel(level)}`;
   }
-  return `Урон: ${knightAttackFromUpgradeLevel(level)}`;
+  return `Damage: ${knightAttackFromUpgradeLevel(level)}`;
 }

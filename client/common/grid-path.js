@@ -38,7 +38,7 @@ export function isForestFloorDecalSpriteType(spriteType) {
 
 /**
  * Клетка проходима: нет занятой клетки в state (пустой мир / фон).
- * Деревья и здания блокируют.
+ * Деревья проходимы (юниты ходят через них), здания и прочие занятые клетки блокируют.
  *
  * @param {import('../engine/state/cell.js').Cell | undefined} cell
  * @returns {boolean}
@@ -51,7 +51,7 @@ export function isWalkableCell(cell) {
     return true;
   }
   if (isTreeSpriteType(cell.spriteType)) {
-    return false;
+    return true;
   }
   return false;
 }

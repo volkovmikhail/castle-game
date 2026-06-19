@@ -1,5 +1,4 @@
 import { tiles } from '../constants/tiles.js';
-import { DEFAULT_BUILDING_KEY } from '../constants/buildings-toolbar.js';
 import {
   BARN_TOOL_KEY,
   BLACKSMITH_TOOL_KEY,
@@ -384,25 +383,34 @@ export class Game {
       height: WORLD_HEIGHT_PX,
     });
 
-    const buildingKey = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
-    const tileData =
-      buildingKey === KNIGHT_TOOL_KEY
-        ? KNIGHT_SPAWN_FOOTPRINT
-        : buildingKey === BARN_TOOL_KEY
-          ? tiles.houseBarn
-          : buildingKey === HOUSE_TOOL_KEY
-            ? tiles.house
-            : buildingKey === BLACKSMITH_TOOL_KEY
-              ? tiles.houseBlacksmith
-              : tiles[buildingKey];
+    const buildingKey = this.ui.getSelectedBuilding();
     const { tx, ty } = this.controls.getSelectedCoords();
+    if (buildingKey) {
+      const tileData =
+        buildingKey === KNIGHT_TOOL_KEY
+          ? KNIGHT_SPAWN_FOOTPRINT
+          : buildingKey === BARN_TOOL_KEY
+            ? tiles.houseBarn
+            : buildingKey === HOUSE_TOOL_KEY
+              ? tiles.house
+              : buildingKey === BLACKSMITH_TOOL_KEY
+                ? tiles.houseBlacksmith
+                : tiles[buildingKey];
 
-    this.renderer.drawSelector({
-      tx,
-      ty,
-      width: tileData.width,
-      height: tileData.height,
-    });
+      this.renderer.drawSelector({
+        tx,
+        ty,
+        width: tileData.width,
+        height: tileData.height,
+      });
+    } else {
+      this.renderer.drawSelector({
+        tx,
+        ty,
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+      });
+    }
 
     const showPlayerIndicators = this.controls.isSpacePressed();
 
@@ -414,6 +422,12 @@ export class Game {
     });
 
     this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
+
+    this.renderer.drawTreesAboveKnights({
+      state: this.stateManager.getState(),
+      scrollOffset: this.controls.getScrollOffset(),
+      occupiedTileKeys: this.#knightSystem.getUpperHalfOccupiedTileKeys(),
+    });
 
     const marqueeDraft = this.controls.getMarqueeDraftWorldRect();
     if (marqueeDraft) {
@@ -504,9 +518,14 @@ export class Game {
       if (!this.#knightSystem.trySelectAt(worldPx, worldPy, shiftKey, this.localPlayer.userId)) {
         this.#knightSystem.clearSelection();
 
-        const selectedBuilding = this.ui.getSelectedBuilding() ?? DEFAULT_BUILDING_KEY;
+        const selectedBuilding = this.ui.getSelectedBuilding();
 
-        if (!this.#tryHarvestFarm(tx, ty) && !this.#tryOpenShop(tx, ty) && !this.#tryOpenKnightUpgrade(tx, ty)) {
+        if (
+          !this.#tryHarvestFarm(tx, ty) &&
+          !this.#tryOpenShop(tx, ty) &&
+          !this.#tryOpenKnightUpgrade(tx, ty) &&
+          selectedBuilding
+        ) {
           if (selectedBuilding === KNIGHT_TOOL_KEY) {
             const validationError = this.#validatePlacement({
               x: tx,
@@ -605,6 +624,7 @@ export class Game {
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
+                  this.ui.exitBuildMode();
                 }
               }
             }
@@ -722,7 +742,7 @@ export class Game {
       return null;
     }
     if (toolKey === 'market' && this.#playerHasAnyMarket(this.localPlayer.userId)) {
-      return 'Магазин можно построить только один раз.';
+      return 'Market can only be built once.';
     }
     return null;
   }
@@ -734,10 +754,10 @@ export class Game {
   #tryAffordPlacement(toolKey) {
     const resources = this.#playerResources.get(this.localPlayer.userId);
     if (!resources) {
-      return 'Нет данных ресурсов.';
+      return 'No resource data.';
     }
     if (!canAfford(resources, getNumericCost(toolKey))) {
-      return 'Недостаточно ресурсов.';
+      return 'Not enough resources.';
     }
     return null;
   }
@@ -760,33 +780,33 @@ export class Game {
    */
   #validatePlacement({ x, y, tileData }) {
     if (!this.#isInsideWorld({ x, y, tileData })) {
-      return 'Нельзя строить за пределами мира.';
+      return 'Cannot build outside the world.';
     }
 
     const blockingCell = this.#getBlockingCellInArea({ x, y, tileData });
     if (blockingCell) {
       if (isTreeSpriteType(blockingCell.spriteType)) {
-        return 'Нельзя ставить здание поверх дерева. Сначала расчистите место.';
+        return 'Cannot place a building over a tree. Clear the spot first.';
       }
-      return 'Нельзя ставить здание на занятую клетку.';
+      return 'Cannot place a building on an occupied tile.';
     }
 
     if (
       tileData.type !== 'knight' &&
       this.#knightSystem.hasKnightInFootprint(x, y, tileData.width, tileData.height)
     ) {
-      return 'Нельзя ставить здание на рыцаря.';
+      return 'Cannot place a building on a knight.';
     }
 
     if (!this.#hasOwnedCellInRadius({ x, y, tileData, radiusCells: MAX_BUILD_DISTANCE_CELLS })) {
-      return 'Слишком далеко от вашего дома: максимум 2 клетки.';
+      return 'Too far from your home: max 2 tiles.';
     }
 
     if (
       this.#isHomeBuildingType(tileData.type)
       && !this.#hasOwnedHomeInRadius({ x, y, tileData, radiusCells: HOUSE_NEIGHBOR_RADIUS_CELLS })
     ) {
-      return 'Для дома рядом (до 3 клеток) нужен ещё один ваш дом.';
+      return 'A nearby house (within 3 tiles) is required for this house.';
     }
 
     return null;
@@ -1316,7 +1336,7 @@ export class Game {
     }
 
     if (BLACKSMITH_CONSTRUCTION_SPRITE_TYPES.includes(cell.spriteType)) {
-      this.ui.showToast('Кузница ещё строится.');
+      this.ui.showToast('Blacksmith is still under construction.');
       return true;
     }
 
@@ -1327,12 +1347,12 @@ export class Game {
     }
 
     if (cell.ownerUserId !== this.localPlayer.userId) {
-      this.ui.showToast(isCastle ? 'Это не ваш замок.' : 'Это не ваша кузница.');
+      this.ui.showToast(isCastle ? 'This is not your castle.' : 'This is not your blacksmith.');
       return true;
     }
 
     if (this.#countBlacksmithsForPlayer(this.localPlayer.userId) < 1) {
-      this.ui.showToast('Нужна кузница, чтобы прокачивать рыцарей.');
+      this.ui.showToast('A blacksmith is required to upgrade knights.');
       return true;
     }
 
@@ -1369,19 +1389,19 @@ export class Game {
     if (current >= maxLevel) {
       return {
         ok: false,
-        message: `Максимум для ${blacksmithCount} кузниц: ${maxLevel} уровней.`,
+        message: `Max for ${blacksmithCount} blacksmiths: ${maxLevel} levels.`,
       };
     }
 
     const nextLevel = current + 1;
     const resources = this.#playerResources.get(userId);
     if (!resources) {
-      return { ok: false, message: 'Нет данных ресурсов.' };
+      return { ok: false, message: 'No resource data.' };
     }
 
     const cost = getKnightUpgradeCost(kind, nextLevel);
     if (!canAfford(resources, cost)) {
-      return { ok: false, message: 'Недостаточно ресурсов.' };
+      return { ok: false, message: 'Not enough resources.' };
     }
 
     subtractResources(resources, cost);
@@ -1415,27 +1435,27 @@ export class Game {
     }
 
     if (cell.spriteType === 'marketStage1' || cell.spriteType === 'marketStage2') {
-      this.ui.showToast('Магазин ещё строится.');
+      this.ui.showToast('Market is still under construction.');
       return true;
     }
 
     if (cell.spriteType === 'houseFarmStage1' || cell.spriteType === 'houseFarmStage2') {
-      this.ui.showToast('Фермерский дом ещё строится.');
+      this.ui.showToast('Farmhouse is still under construction.');
       return true;
     }
 
     if (BARN_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
-      this.ui.showToast('Сарай ещё строится.');
+      this.ui.showToast('Barn is still under construction.');
       return true;
     }
 
     if (RESIDENTIAL_HOUSE_UNDER_CONSTRUCTION_SPRITES.has(cell.spriteType)) {
-      this.ui.showToast('Дом ещё строится.');
+      this.ui.showToast('House is still under construction.');
       return true;
     }
 
     if (BLACKSMITH_CONSTRUCTION_SPRITE_TYPES.includes(cell.spriteType)) {
-      this.ui.showToast('Кузница ещё строится.');
+      this.ui.showToast('Blacksmith is still under construction.');
       return true;
     }
 
@@ -1444,7 +1464,7 @@ export class Game {
     }
 
     if (cell.ownerUserId !== this.localPlayer.userId) {
-      this.ui.showToast('Это не ваш магазин.');
+      this.ui.showToast('This is not your market.');
       return true;
     }
 
@@ -1463,23 +1483,23 @@ export class Game {
   #shopExchange(kind, qty) {
     const q = Math.floor(Number(qty));
     if (!Number.isFinite(q) || q <= 0) {
-      return { ok: false, message: 'Укажите количество больше нуля.' };
+      return { ok: false, message: 'Enter an amount greater than zero.' };
     }
 
     const resources = this.#playerResources.get(this.localPlayer.userId);
     if (!resources) {
-      return { ok: false, message: 'Нет данных ресурсов.' };
+      return { ok: false, message: 'No resource data.' };
     }
 
     switch (kind) {
       case 'wheatToGold': {
         const batches = Math.floor(q / SHOP_WHEAT_PER_ONE_GOLD);
         if (batches < 1) {
-          return { ok: false, message: `Нужно минимум ${SHOP_WHEAT_PER_ONE_GOLD} пшеницы.` };
+          return { ok: false, message: `You need at least ${SHOP_WHEAT_PER_ONE_GOLD} wheat.` };
         }
         const cost = batches * SHOP_WHEAT_PER_ONE_GOLD;
         if (resources.wheat < cost) {
-          return { ok: false, message: 'Недостаточно пшеницы.' };
+          return { ok: false, message: 'Not enough wheat.' };
         }
         resources.wheat -= cost;
         resources.gold += batches;
@@ -1488,11 +1508,11 @@ export class Game {
       case 'woodToGold': {
         const batches = Math.floor(q / SHOP_WOOD_PER_ONE_GOLD);
         if (batches < 1) {
-          return { ok: false, message: `Нужно минимум ${SHOP_WOOD_PER_ONE_GOLD} дерева.` };
+          return { ok: false, message: `You need at least ${SHOP_WOOD_PER_ONE_GOLD} wood.` };
         }
         const cost = batches * SHOP_WOOD_PER_ONE_GOLD;
         if (resources.wood < cost) {
-          return { ok: false, message: 'Недостаточно дерева.' };
+          return { ok: false, message: 'Not enough wood.' };
         }
         resources.wood -= cost;
         resources.gold += batches;
@@ -1500,7 +1520,7 @@ export class Game {
       }
       case 'goldToWood': {
         if (resources.gold < q) {
-          return { ok: false, message: 'Недостаточно золота.' };
+          return { ok: false, message: 'Not enough gold.' };
         }
         resources.gold -= q;
         resources.wood += q * SHOP_WOOD_PER_SPENT_GOLD;
@@ -1508,14 +1528,14 @@ export class Game {
       }
       case 'goldToWheat': {
         if (resources.gold < q) {
-          return { ok: false, message: 'Недостаточно золота.' };
+          return { ok: false, message: 'Not enough gold.' };
         }
         resources.gold -= q;
         resources.wheat += q * SHOP_WHEAT_PER_SPENT_GOLD;
         break;
       }
       default:
-        return { ok: false, message: 'Неизвестный тип обмена.' };
+        return { ok: false, message: 'Unknown exchange type.' };
     }
 
     this.ui.setResources(resources);
@@ -1534,7 +1554,7 @@ export class Game {
     }
 
     if (cell.ownerUserId !== this.localPlayer.userId) {
-      this.ui.showToast('Это не ваша ферма.');
+      this.ui.showToast('This is not your farm.');
       return true;
     }
 

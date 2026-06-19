@@ -195,6 +195,26 @@ export class KnightSystem {
   }
 
   /**
+   * Тайлы `${tx}:${ty}`, в верхней трети которых находится центр хотя бы одного рыцаря
+   * (для отрисовки дерева поверх рыцаря только когда он "заходит" в верхнюю треть тайла).
+   *
+   * @returns {Set<string>}
+   */
+  getUpperHalfOccupiedTileKeys() {
+    const keys = new Set();
+    for (const u of this.#units) {
+      const center = u.center();
+      const tx = Math.floor(center.x / TILE_SIZE) * TILE_SIZE;
+      const ty = Math.floor(center.y / TILE_SIZE) * TILE_SIZE;
+      const isUpperThird = center.y - ty < TILE_SIZE / 2.5;
+      if (isUpperThird) {
+        keys.add(`${tx}:${ty}`);
+      }
+    }
+    return keys;
+  }
+
+  /**
    * Есть ли рыцарь на любой клетке отпечатка (левый верх якоря, размеры в px).
    *
    * @param {number} anchorX
@@ -448,7 +468,7 @@ export class KnightSystem {
           footprintW: td.width,
           footprintH: td.height,
           neighborTiles: neighbors,
-          cantApproachMsg: 'К зданию не подойти.',
+          cantApproachMsg: 'Cannot reach the building.',
         });
         return;
       }
@@ -475,7 +495,7 @@ export class KnightSystem {
       }
     }
     if (!anyPath) {
-      showToast('Нельзя дойти до этой точки.');
+      showToast('Cannot reach this point.');
     }
   }
 
@@ -491,7 +511,7 @@ export class KnightSystem {
   #orderChopGroup(units, anchorTile, state, worldWidthPx, worldHeightPx, showToast, opts = {}) {
     const footprintW = opts.footprintW ?? TILE_SIZE;
     const footprintH = opts.footprintH ?? TILE_SIZE;
-    const cantApproachMsg = opts.cantApproachMsg ?? 'К дереву не подойти.';
+    const cantApproachMsg = opts.cantApproachMsg ?? 'Cannot reach the tree.';
     const neighbors =
       opts.neighborTiles ??
       neighborStandTiles8ForTree(anchorTile.x, anchorTile.y).filter((t) =>
@@ -503,8 +523,26 @@ export class KnightSystem {
       return;
     }
 
-    for (const u of units) {
+    // Сколько юнитов уже нацелено на каждую клетку стоянки — чтобы группа расходилась по
+    // всем клеткам вокруг цели, а не толпилась на одной (максимум одновременных атакующих).
+    const claims = new Map(neighbors.map((n) => [`${n.x}:${n.y}`, 0]));
+    const targetCx = anchorTile.x + footprintW / 2;
+    const targetCy = anchorTile.y + footprintH / 2;
+
+    // Юниты, что уже ближе к цели, разбирают клетки первыми — им короче идти, и они
+    // первыми займут позицию, пока остальные ещё в пути.
+    const order = [...units].sort((a, b) => {
+      const da = (a.center().x - targetCx) ** 2 + (a.center().y - targetCy) ** 2;
+      const db = (b.center().x - targetCx) ** 2 + (b.center().y - targetCy) ** 2;
+      return da - db;
+    });
+
+    for (const u of order) {
       const sorted = [...neighbors].sort((a, b) => {
+        const claimDiff = (claims.get(`${a.x}:${a.y}`) ?? 0) - (claims.get(`${b.x}:${b.y}`) ?? 0);
+        if (claimDiff !== 0) {
+          return claimDiff;
+        }
         const da = (a.x + TILE_SIZE / 2 - u.center().x) ** 2 + (a.y + TILE_SIZE / 2 - u.center().y) ** 2;
         const db = (b.x + TILE_SIZE / 2 - u.center().x) ** 2 + (b.y + TILE_SIZE / 2 - u.center().y) ** 2;
         return da - db;
@@ -529,6 +567,8 @@ export class KnightSystem {
       u.idleNextAltAt = null;
 
       if (picked) {
+        const key = `${picked.n.x}:${picked.n.y}`;
+        claims.set(key, (claims.get(key) ?? 0) + 1);
         u.path = picked.path;
         u.pixelGoal = this.#chopApproachPixelGoalTopLeft(
           anchorTile.x,
@@ -556,8 +596,28 @@ export class KnightSystem {
    * @param {(msg: string) => void} showToast
    */
   #orderAttackKnightGroup(units, target, state, worldWidthPx, worldHeightPx, showToast) {
-    for (const u of units) {
-      this.#engageEnemyKnight(u, target, state, worldWidthPx, worldHeightPx, showToast);
+    const attackers = units.filter((u) => arePlayersEnemies(u.ownerUserId, target.ownerUserId));
+    if (attackers.length === 0 || target.hp <= 0) {
+      return;
+    }
+
+    // Общий пул клеток вокруг цели считаем один раз для всей группы — так клетки
+    // распределяются через #orderChopGroup, и юниты обступают цель со всех сторон,
+    // а не толпятся на одной ближайшей клетке.
+    const neighbors = neighborStandTiles8ForFootprint(target.x, target.y, KNIGHT_W, KNIGHT_H).filter((t) =>
+      isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
+    );
+
+    this.#orderChopGroup(attackers, { x: target.x, y: target.y }, state, worldWidthPx, worldHeightPx, showToast, {
+      footprintW: KNIGHT_W,
+      footprintH: KNIGHT_H,
+      neighborTiles: neighbors,
+      cantApproachMsg: 'Cannot reach the knight.',
+    });
+
+    for (const u of attackers) {
+      u.chopTreeTile = null;
+      u.chopTargetKnightId = target.id;
     }
   }
 
@@ -586,7 +646,7 @@ export class KnightSystem {
         neighborTiles: neighborStandTiles8ForFootprint(target.x, target.y, KNIGHT_W, KNIGHT_H).filter((t) =>
           isWalkableTile(state, t.x, t.y, worldWidthPx, worldHeightPx)
         ),
-        cantApproachMsg: 'К рыцарю не подойти.',
+        cantApproachMsg: 'Cannot reach the knight.',
       }
     );
     u.chopTreeTile = null;

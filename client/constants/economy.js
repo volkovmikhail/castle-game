@@ -124,13 +124,13 @@ export function formatCostLineForTool(toolKey) {
   const c = getNumericCost(toolKey);
   const parts = [];
   if (c.wheat > 0) {
-    parts.push(`${c.wheat} пшеницы`);
+    parts.push(`${c.wheat} wheat`);
   }
   if (c.wood > 0) {
-    parts.push(`${c.wood} дерева`);
+    parts.push(`${c.wood} wood`);
   }
   if (c.gold > 0) {
-    parts.push(`${c.gold} золота`);
+    parts.push(`${c.gold} gold`);
   }
   return parts.join(' · ');
 }

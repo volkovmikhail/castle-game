@@ -35,35 +35,35 @@ export const SHOP_QUANTITY_STEP = 10;
 export function getShopExchangePreviewLine(kind, qty, resources) {
   const q = Math.floor(Number(qty));
   if (!Number.isFinite(q) || q <= 0) {
-    return 'Введите количество больше нуля.';
+    return 'Enter an amount greater than zero.';
   }
 
   switch (kind) {
     case 'wheatToGold': {
       const batches = Math.floor(q / SHOP_WHEAT_PER_ONE_GOLD);
       if (batches < 1) {
-        return `Нужно минимум ${SHOP_WHEAT_PER_ONE_GOLD} пшеницы, чтобы получить золото.`;
+        return `You need at least ${SHOP_WHEAT_PER_ONE_GOLD} wheat to get gold.`;
       }
       const cost = batches * SHOP_WHEAT_PER_ONE_GOLD;
       const gold = batches;
-      return `За ${cost} пшеницы вы получите ${gold} золота (у вас ${resources.wheat}).`;
+      return `For ${cost} wheat you will get ${gold} gold (you have ${resources.wheat}).`;
     }
     case 'woodToGold': {
       const batches = Math.floor(q / SHOP_WOOD_PER_ONE_GOLD);
       if (batches < 1) {
-        return `Нужно минимум ${SHOP_WOOD_PER_ONE_GOLD} дерева, чтобы получить золото.`;
+        return `You need at least ${SHOP_WOOD_PER_ONE_GOLD} wood to get gold.`;
       }
       const cost = batches * SHOP_WOOD_PER_ONE_GOLD;
       const gold = batches;
-      return `За ${cost} дерева вы получите ${gold} золота (у вас ${resources.wood}).`;
+      return `For ${cost} wood you will get ${gold} gold (you have ${resources.wood}).`;
     }
     case 'goldToWood': {
       const wood = q * SHOP_WOOD_PER_SPENT_GOLD;
-      return `За ${q} золота вы получите ${wood} дерева (у вас ${resources.gold} золота).`;
+      return `For ${q} gold you will get ${wood} wood (you have ${resources.gold} gold).`;
     }
     case 'goldToWheat': {
       const wheat = q * SHOP_WHEAT_PER_SPENT_GOLD;
-      return `За ${q} золота вы получите ${wheat} пшеницы (у вас ${resources.gold} золота).`;
+      return `For ${q} gold you will get ${wheat} wheat (you have ${resources.gold} gold).`;
     }
     default:
       return '';

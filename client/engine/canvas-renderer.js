@@ -136,6 +136,31 @@ export class CanvasRenderer {
   }
 
   /**
+   * Перерисовывает деревья над клетками, занятыми рыцарями, чтобы рыцарь визуально проходил позади дерева.
+   *
+   * @param {{
+   *   state: Map<string, Cell>;
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   *   occupiedTileKeys: Set<string>;
+   * }}
+   */
+  drawTreesAboveKnights({ state, scrollOffset: { offsetX, offsetY }, occupiedTileKeys }) {
+    if (!occupiedTileKeys || occupiedTileKeys.size === 0) return;
+    for (const key of occupiedTileKeys) {
+      const cell = state.get(key);
+      if (!cell || !cell.isRenderable || !isTreeSpriteType(cell.spriteType)) continue;
+      const [tx, ty] = key.split(':');
+      this.drawCell({
+        x: Number(tx) + offsetX,
+        y: Number(ty) + offsetY,
+        cell,
+        showPlayerIndicators: false,
+        localPlayerUserId: null,
+      });
+    }
+  }
+
+  /**
    * Флаги замков — поверх всего мира (после снега и рыцарей).
    *
    * @param {{
