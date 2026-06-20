@@ -44,7 +44,7 @@ import {
   getKnightUpgradeCost,
   maxKnightUpgradeLevelForBlacksmiths,
 } from '../../client/constants/knight-upgrades.js';
-import { BUILDING_REGEN_HP_PER_SECOND } from '../../client/constants/structure-hp.js';
+import { BUILDING_REGEN_HP_PER_SECOND, CASTLE_MAX_HP } from '../../client/constants/structure-hp.js';
 import {
   BASE_STORAGE_CAP_WHEAT_WOOD,
   cloneStartingResources,
@@ -166,7 +166,7 @@ export class WorldSim {
         y: slot.castleStart.y,
         tileData: tiles.castle,
         ownerUserId: slot.userId,
-        entity: createBuildingHp(),
+        entity: createBuildingHp(CASTLE_MAX_HP),
       });
     }
     this.#bump();

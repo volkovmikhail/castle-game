@@ -6,6 +6,7 @@
 import assert from 'assert';
 import { WorldSim } from '../server/game/world-sim.js';
 import { PLAYER_SLOTS } from '../server/constants/slots.js';
+import { CASTLE_MAX_HP } from '../client/constants/structure-hp.js';
 
 function run() {
   const slots = [PLAYER_SLOTS[0], PLAYER_SLOTS[1]];
@@ -49,7 +50,7 @@ function run() {
     // HP-дельта повреждённого замка должна попадать в снапшот (живые полоски HP).
     if (!sawCastleHpDelta) {
       const s = world.collectSnapshot(world.stateVersion);
-      if (s.hp.some((h) => h[0] === blueCastle.x && h[1] === blueCastle.y && h[2] < 200)) {
+      if (s.hp.some((h) => h[0] === blueCastle.x && h[1] === blueCastle.y && h[2] < CASTLE_MAX_HP)) {
         sawCastleHpDelta = true;
       }
     }

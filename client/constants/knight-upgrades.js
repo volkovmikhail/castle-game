@@ -15,11 +15,11 @@ export const BLACKSMITH_CONSTRUCTION_SPRITE_TYPES = [
 ];
 
 /** Базовые статы рыцаря без прокачки (уровень 0). */
-export const KNIGHT_BASE_HP = 100;
+export const KNIGHT_BASE_HP = 40;
 export const KNIGHT_BASE_ATTACK = 15;
 
 /** Прирост за каждый уровень прокачки (общий для всех рыцарей игрока). */
-export const KNIGHT_HP_PER_UPGRADE_LEVEL = 30;
+export const KNIGHT_HP_PER_UPGRADE_LEVEL = 10;
 export const KNIGHT_ATTACK_PER_UPGRADE_LEVEL = 5;
 
 /**

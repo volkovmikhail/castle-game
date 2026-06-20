@@ -61,6 +61,7 @@ import { Random } from '../common/random.js';
 import { tryMatureOneSapling, tryMatureOneTreeToBig, tryRegrowOneTree } from './forest-regrowth.js';
 import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-path.js';
 import { createBuildingHp } from './entities/building-hp.js';
+import { CASTLE_MAX_HP } from '../constants/structure-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
 import { INTENT } from '../net/protocol.js';
@@ -1239,7 +1240,7 @@ export class Game {
         y: playerProfile.castleStart.y,
         tileData: tiles.castle,
         ownerUserId: playerProfile.userId,
-        entity: createBuildingHp(),
+        entity: createBuildingHp(CASTLE_MAX_HP),
       });
     }
   }
