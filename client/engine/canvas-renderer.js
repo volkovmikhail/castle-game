@@ -1,6 +1,7 @@
 import { isTreeSpriteType } from '../common/grid-path.js';
 import { drawStructureHpBar } from '../common/structure-hp-bar.js';
 import { drawCastleFlagsFromTilemap } from '../game/atmosphere/castle-flags.js';
+import { drawExteriorForest } from '../game/atmosphere/exterior-forest.js';
 import { BACKGROUND_COLOR, SELECTOR_COLOR } from '../constants/colors.js';
 import {
   PLAYER_BUILDING_TRIANGLE_GAP_PX,
@@ -40,6 +41,27 @@ export class CanvasRenderer {
   clear() {
     this.ctx.fillStyle = BACKGROUND_COLOR;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /**
+   * Декоративный лес за пределами карты (видимая часть), чтобы скролл "за край"
+   * не выглядел пустым. Чисто визуально, в состояние мира не пишет.
+   *
+   * @param {{
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   *   worldWidthPx: number;
+   *   worldHeightPx: number;
+   * }} param
+   */
+  drawExteriorForest({ scrollOffset: { offsetX, offsetY }, worldWidthPx, worldHeightPx }) {
+    drawExteriorForest(this.ctx, this.tileMap, {
+      offsetX,
+      offsetY,
+      canvasWidth: this.canvas.width,
+      canvasHeight: this.canvas.height,
+      worldWidthPx,
+      worldHeightPx,
+    });
   }
 
   /**

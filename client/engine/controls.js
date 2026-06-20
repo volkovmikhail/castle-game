@@ -67,6 +67,8 @@ export class Controls {
   #lastLeftClickShift = false;
   #isSpacePressed = false;
   #pendingSelectAllKnights = false;
+  /** Зажат S — режим приказа перемещения (ЛКМ = идти к точке), курсор-прицел. */
+  #isMovePressed = false;
 
   /** @type {{ x: number; y: number } | null} последняя позиция мыши относительно канваса. */
   #lastCanvasX = null;
@@ -101,6 +103,21 @@ export class Controls {
         this.#pendingSelectAllKnights = true;
         event.preventDefault();
       }
+      if (
+        event.code === 'KeyS' &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        const t = event.target;
+        if (
+          t instanceof HTMLElement &&
+          (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+        ) {
+          return;
+        }
+        this.#setMovePressed(true);
+      }
     });
 
     window.addEventListener('keyup', (event) => {
@@ -108,10 +125,14 @@ export class Controls {
         this.#isSpacePressed = false;
         event.preventDefault();
       }
+      if (event.code === 'KeyS') {
+        this.#setMovePressed(false);
+      }
     });
 
     window.addEventListener('blur', () => {
       this.#isSpacePressed = false;
+      this.#setMovePressed(false);
     });
 
     this.canvas.addEventListener('contextmenu', (event) => {
@@ -366,6 +387,19 @@ export class Controls {
     };
   }
 
+  /**
+   * Центрировать камеру на точке мира (например на своём замке при старте).
+   *
+   * @param {number} worldX
+   * @param {number} worldY
+   */
+  centerOn(worldX, worldY) {
+    this.#setScrollOffset({
+      offsetX: this.#viewportWidth / 2 - worldX,
+      offsetY: this.#viewportHeight / 2 - worldY,
+    });
+  }
+
   #setSelectedCoords(cords) {
     this.#selectedCoords = cords;
   }
@@ -457,6 +491,20 @@ export class Controls {
 
   isSpacePressed() {
     return this.#isSpacePressed;
+  }
+
+  /** Включить/выключить режим перемещения: меняем курсор канваса на прицел. */
+  #setMovePressed(on) {
+    if (this.#isMovePressed === on) {
+      return;
+    }
+    this.#isMovePressed = on;
+    this.canvas.style.cursor = on ? 'crosshair' : '';
+  }
+
+  /** Зажата ли кнопка S (режим приказа перемещения выделенных рыцарей). */
+  isMovePressed() {
+    return this.#isMovePressed;
   }
 
   /**

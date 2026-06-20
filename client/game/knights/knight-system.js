@@ -160,6 +160,17 @@ class KnightUnit {
   }
 }
 
+/** Методы для «зеркальных» юнитов из снапшота (рендер-пути зовут u.center() и пр.). */
+function mirrorCenter() {
+  return { x: this.x + KNIGHT_HALF_W, y: this.y + KNIGHT_HALF_H };
+}
+function mirrorAnchorTileOrigin() {
+  return {
+    tx: Math.floor(this.x / TILE_SIZE) * TILE_SIZE,
+    ty: Math.floor(this.y / TILE_SIZE) * TILE_SIZE,
+  };
+}
+
 export class KnightSystem {
   /** @type {KnightUnit[]} */
   #units = [];
@@ -268,6 +279,106 @@ export class KnightSystem {
   }
 
   /**
+   * Компактный снимок юнитов для сети (сервер → клиент). Координаты округлены.
+   *
+   * @returns {{ id: number; o: string; x: number; y: number; hp: number; mhp: number; m: string; fl: 0 | 1 }[]}
+   */
+  getUnitsSnapshot() {
+    return this.#units.map((u) => ({
+      id: u.id,
+      o: u.ownerUserId,
+      x: Math.round(u.x),
+      y: Math.round(u.y),
+      hp: Math.round(u.hp),
+      mhp: u.maxHp,
+      m: u.mode,
+      fl: u.faceLeft ? 1 : 0,
+    }));
+  }
+
+  /**
+   * Заменить юниты лёгкими «зеркалами» из снапшота (клиент-рендер серверного боя).
+   * Рендер использует x/y/mode/faceLeft/hp; анимация бега восстанавливается из mode.
+   *
+   * @param {{ id: number; o: string; x: number; y: number; hp: number; mhp: number; m: string; fl: 0 | 1 }[]} snapshot
+   * @param {number} nowMs
+   */
+  hydrateFromSnapshot(snapshot, nowMs) {
+    /** @type {Map<number, any>} */
+    const prev = new Map(this.#units.map((u) => [u.id, u]));
+    this.#units.length = 0;
+    for (const s of snapshot) {
+      const u = prev.get(s.id) ?? {};
+      const isNew = !prev.has(s.id);
+      u.id = s.id;
+      u.ownerUserId = s.o;
+      // Цель из снапшота; u.x/u.y — сглаженная позиция рендера (интерполируется).
+      u.tx = s.x;
+      u.ty = s.y;
+      if (isNew || u.x == null) {
+        u.x = s.x;
+        u.y = s.y;
+      }
+      u.hp = s.hp;
+      u.maxHp = s.mhp;
+      u.mode = s.m;
+      u.faceLeft = s.fl === 1;
+      u.isMirror = true;
+      // Методы, которые зовут рендер-пути (getUpperHalfOccupiedTileKeys и пр.).
+      if (typeof u.center !== 'function') {
+        u.center = mirrorCenter;
+        u.anchorTileOrigin = mirrorAnchorTileOrigin;
+      }
+      // animMs живёт между снапшотами и крутится в interpolate() — для анимации удара/idle.
+      if (u.animMs == null) {
+        u.animMs = 0;
+      }
+      u.lastDamagedAtMs = s.hp < s.mhp ? nowMs : 0;
+      u.path = [];
+      u.pixelGoal = null;
+      // Анимация бега идёт, пока mode==='move' (walkAnimStartMs живёт между снапшотами).
+      if (s.m === 'move') {
+        if (u.walkAnimStartMs == null) {
+          u.walkAnimStartMs = nowMs;
+        }
+      } else {
+        u.walkAnimStartMs = null;
+      }
+      if (u.idleNextAltAt == null) {
+        u.idleNextAltAt = null;
+      }
+      this.#units.push(u);
+    }
+  }
+
+  /**
+   * Сетевой режим: сгладить рывки. Снапшоты приходят ~10 Гц, рендер — 60 fps,
+   * поэтому каждый кадр плавно тянем позицию рендера к серверной цели (u.tx/ty) и
+   * крутим таймер анимации (удар/idle).
+   *
+   * @param {number} dtMs
+   */
+  interpolate(dtMs) {
+    const k = Math.min(1, dtMs / 70);
+    for (const u of this.#units) {
+      u.animMs += dtMs;
+      if (u.tx == null) {
+        continue;
+      }
+      const dx = u.tx - u.x;
+      const dy = u.ty - u.y;
+      // Большой скачок (спавн/телепорт/рассинхрон) — без слайда через карту.
+      if (Math.hypot(dx, dy) > 40) {
+        u.x = u.tx;
+        u.y = u.ty;
+      } else {
+        u.x += dx * k;
+        u.y += dy * k;
+      }
+    }
+  }
+
+  /**
    * Тестовый спавн: смещения от якоря (например `castleStart` жёлтого замка).
    *
    * @param {{ x: number; y: number }} anchor
@@ -361,6 +472,15 @@ export class KnightSystem {
   }
 
   /**
+   * Текущее выделение (id). Клиент шлёт их в moveOrder-намерении серверу.
+   *
+   * @returns {number[]}
+   */
+  getSelectedIds() {
+    return [...this.#selectedIds];
+  }
+
+  /**
    * Выделить всех рыцарей локального игрока (остальные снимаются).
    *
    * @param {string} localOwnerId
@@ -369,6 +489,23 @@ export class KnightSystem {
     this.#selectedIds.clear();
     for (const u of this.#units) {
       if (u.ownerUserId === localOwnerId) {
+        this.#selectedIds.add(u.id);
+      }
+    }
+  }
+
+  /**
+   * Задать выделение из списка id (только свои юниты). Используется сервером:
+   * приказ применяется к рыцарям, выделенным на клиенте (id приходят в intent).
+   *
+   * @param {number[]} ids
+   * @param {string} ownerUserId
+   */
+  selectByIds(ids, ownerUserId) {
+    const allow = new Set(ids);
+    this.#selectedIds.clear();
+    for (const u of this.#units) {
+      if (u.ownerUserId === ownerUserId && allow.has(u.id)) {
         this.#selectedIds.add(u.id);
       }
     }
@@ -474,6 +611,50 @@ export class KnightSystem {
       }
     }
 
+    const goal = { x: worldPx, y: worldPy };
+    let anyPath = false;
+    for (const u of selected) {
+      const path = findPathTiles(state, u.center(), goal, worldWidthPx, worldHeightPx);
+      if (path !== null) {
+        u.path = path;
+        u.mode = 'move';
+        this.#clearMeleeTarget(u);
+        u.chopCooldownMs = 0;
+        u.walkAnimStartMs = performance.now();
+        u.idleNextAltAt = null;
+        u.pixelGoal = this.#clampTopLeftToWorld(
+          worldPx - KNIGHT_HALF_W,
+          worldPy - KNIGHT_HALF_H,
+          worldWidthPx,
+          worldHeightPx
+        );
+        anyPath = true;
+      }
+    }
+    if (!anyPath) {
+      showToast('Cannot reach this point.');
+    }
+  }
+
+  /**
+   * Приказ «просто идти к точке» без рубки/атаки (ЛКМ-клик по выбранным рыцарям).
+   * Деревья/враги/здания на пути игнорируются как цели — это чистое перемещение.
+   * Контекстный приказ (атака/рубка) остаётся на ПКМ через issueOrder.
+   *
+   * @param {number} worldPx
+   * @param {number} worldPy
+   * @param {import('../../engine/state/state-manager.js').StateManager} stateManager
+   * @param {number} worldWidthPx
+   * @param {number} worldHeightPx
+   * @param {string} localOwnerId
+   * @param {(msg: string) => void} [showToast]
+   */
+  issuePlainMove(worldPx, worldPy, stateManager, worldWidthPx, worldHeightPx, localOwnerId, showToast = () => {}) {
+    const selected = this.#units.filter((u) => this.#selectedIds.has(u.id) && u.ownerUserId === localOwnerId);
+    if (selected.length === 0) {
+      return;
+    }
+    const state = stateManager.getState();
     const goal = { x: worldPx, y: worldPy };
     let anyPath = false;
     for (const u of selected) {
@@ -716,7 +897,30 @@ export class KnightSystem {
     const ox = nx - treeTx;
     const oy = ny - treeTy;
     if (fpW !== TILE_SIZE || fpH !== TILE_SIZE) {
-      return this.#clampTopLeftToWorld(nx + (T - K) / 2, ny + (T - KNIGHT_H) / 2, worldW, worldH);
+      // Многоклеточный отпечаток (например замок 2×2): прижимаем рыцаря вплотную к
+      // ближней грани здания со стороны клетки стоянки. Центр клетки давал ~3-4px
+      // зазор — больше CHOP_TOUCH_GAP_PX, и рыцарь «замирал», не начиная рубить.
+      const L = treeTx;
+      const R = treeTx + fpW;
+      const Tp = treeTy;
+      const B = treeTy + fpH;
+      let mx;
+      let my;
+      if (nx + T <= L) {
+        mx = L - K;
+      } else if (nx >= R) {
+        mx = R;
+      } else {
+        mx = nx + (T - K) / 2;
+      }
+      if (ny + T <= Tp) {
+        my = Tp - KNIGHT_H;
+      } else if (ny >= B) {
+        my = B;
+      } else {
+        my = ny + (T - KNIGHT_H) / 2;
+      }
+      return this.#clampTopLeftToWorld(mx, my, worldW, worldH);
     }
     let x;
     let y;
@@ -1669,7 +1873,8 @@ export class KnightSystem {
    * @param {KnightUnit} u
    */
   #pickFrame(u) {
-    if (u.mode === 'chop' && this.#hasMeleeTarget(u)) {
+    // У зеркальных юнитов цели боя нет (она на сервере) — анимируем удар по mode.
+    if (u.mode === 'chop' && (u.isMirror || this.#hasMeleeTarget(u))) {
       const i = Math.floor(u.animMs / KNIGHT_CHOP_FRAME_MS) % KNIGHT_FRAMES_CHOP.length;
       return KNIGHT_FRAMES_CHOP[i];
     }

@@ -876,10 +876,23 @@ body {
   color: var(--c-darker);
 }
 
+.lobby__code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .lobby__code {
   font-size: 32px;
   letter-spacing: 8px;
   color: var(--c-grass);
+  padding-left: 8px;
+}
+
+.lobby__copy-btn {
+  font-size: 11px;
+  padding: 6px 10px;
+  letter-spacing: 1px;
 }
 
 .lobby__players {

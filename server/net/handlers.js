@@ -1,6 +1,4 @@
-'use strict';
-
-const { C2S, S2C } = require('./protocol');
+import { C2S, S2C } from './protocol.js';
 
 /**
  * Регистрирует обработчики socket.io. Вся логика комнат — в RoomManager/Room;
@@ -9,7 +7,7 @@ const { C2S, S2C } = require('./protocol');
  * @param {import('socket.io').Server} io
  * @param {import('../rooms/room-manager').RoomManager} roomManager
  */
-function registerHandlers(io, roomManager) {
+export function registerHandlers(io, roomManager) {
   io.on('connection', (socket) => {
     // eslint-disable-next-line no-console
     console.log(`[socket] connected ${socket.id}`);
@@ -146,5 +144,3 @@ function registerHandlers(io, roomManager) {
     });
   });
 }
-
-module.exports = { registerHandlers, S2C };

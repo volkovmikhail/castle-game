@@ -1,10 +1,8 @@
-'use strict';
-
 /**
  * Имена событий socket.io — единый контракт между клиентом и сервером.
  * Клиентская копия: client/net/protocol.js (держать синхронно).
  */
-const C2S = {
+export const C2S = {
   ROOM_CREATE: 'room:create', // { name }            -> ack({ ok, roomId, code, you, room })
   ROOM_JOIN: 'room:join', //     { code, name }      -> ack({ ok, roomId, you, room, error })
   ROOM_LEAVE: 'room:leave', //   {}                  -> ack({ ok })
@@ -13,7 +11,7 @@ const C2S = {
   INTENT: 'intent', //           { type, payload }   (игровые намерения, Phase 2)
 };
 
-const S2C = {
+export const S2C = {
   ROOM_STATE: 'room:state', //   полное состояние лобби/комнаты
   GAME_START: 'game:start', //   { you, players, seed, world }
   GAME_SNAPSHOT: 'game:snapshot', // снапшот мира (Phase 2)
@@ -23,7 +21,7 @@ const S2C = {
 };
 
 /** Игровые намерения (Phase 2). Клиент шлёт INTENT с одним из type. */
-const INTENT = {
+export const INTENT = {
   PLACE_BUILDING: 'placeBuilding', // { toolKey, tx, ty }
   TRAIN_KNIGHT: 'trainKnight', //     { worldPx, worldPy }
   MOVE_ORDER: 'moveOrder', //         { wx, wy, knightIds }
@@ -31,5 +29,3 @@ const INTENT = {
   UPGRADE_ARMY: 'upgradeArmy', //     { kind }
   HARVEST_FARM: 'harvestFarm', //     { tx, ty }
 };
-
-module.exports = { C2S, S2C, INTENT };

@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Сервер — источник правды по идентичности игроков (слот = цвет + стартовый замок).
  * userId совпадает с client/constants/players.js, чтобы клиентский рендер/команды
@@ -56,4 +54,4 @@ const PLAYER_SLOTS = [
   },
 ];
 
-module.exports = { PLAYER_SLOTS, TILE_SIZE };
+export { PLAYER_SLOTS, TILE_SIZE };

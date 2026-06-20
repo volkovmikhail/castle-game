@@ -1,9 +1,7 @@
-'use strict';
-
-const config = require('../config');
-const { PLAYER_SLOTS } = require('../constants/slots');
-const { S2C } = require('../net/protocol');
-const { Simulation } = require('../game/simulation');
+import config from '../config.js';
+import { PLAYER_SLOTS } from '../constants/slots.js';
+import { S2C } from '../net/protocol.js';
+import { Simulation } from '../game/simulation.js';
 
 /**
  * @typedef {{
@@ -359,4 +357,4 @@ class Room {
   }
 }
 
-module.exports = { Room };
+export { Room };

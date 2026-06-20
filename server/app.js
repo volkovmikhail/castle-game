@@ -1,13 +1,11 @@
-'use strict';
+import http from 'http';
+import path from 'path';
+import express from 'express';
+import { Server } from 'socket.io';
 
-const http = require('http');
-const path = require('path');
-const express = require('express');
-const { Server } = require('socket.io');
-
-const config = require('./config');
-const { RoomManager } = require('./rooms/room-manager');
-const { registerHandlers } = require('./net/handlers');
+import config from './config.js';
+import { RoomManager } from './rooms/room-manager.js';
+import { registerHandlers } from './net/handlers.js';
 
 // ── Глобальные предохранители ───────────────────────────────────────────────
 // In-memory сессии: процесс ронять нельзя. Логируем и продолжаем — отдельная

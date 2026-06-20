@@ -74,6 +74,16 @@ export class TreesGenerator {
   }
 
   /**
+   * Пул обычных (не редких) тайлов первичной заливки леса — для переиспользования
+   * внешними модулями (например, декоративный лес за границей карты).
+   *
+   * @returns {string[]}
+   */
+  static getInitialFillTileKeys() {
+    return [...this.#initialFillForestKeys];
+  }
+
+  /**
    * Случайный ключ тайла для первичной генерации леса (редкие типы — по порогу).
    *
    * @returns {string}

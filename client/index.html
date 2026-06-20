@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Castle game</title>
+    <title>Castle Game</title>
 
     <link rel="stylesheet" href="index.css">
   </head>
@@ -12,7 +12,7 @@
       <aside class="sidebar" aria-label="Control panel">
         <div class="sidebar__inner">
           <header class="sidebar__brand">
-            <span class="sidebar__title">Castle</span>
+            <span class="sidebar__title">Castle Game</span>
           </header>
 
           <section class="sidebar__section">
@@ -213,7 +213,7 @@
 
     <div id="lobby" class="lobby" hidden>
       <div class="lobby__panel">
-        <h1 class="lobby__title">Castle</h1>
+        <h1 class="lobby__title">Castle Game</h1>
         <p class="lobby__subtitle">Online battle · 2–4 players · last one standing wins</p>
 
         <div class="lobby__status" id="lobby-status">Connecting…</div>
@@ -241,7 +241,10 @@
         <div class="lobby__view" id="lobby-view-room" hidden>
           <div class="lobby__code-block">
             <span class="lobby__code-label">Room code</span>
-            <span class="lobby__code" id="lobby-room-code">----</span>
+            <div class="lobby__code-row">
+              <span class="lobby__code" id="lobby-room-code">----</span>
+              <button type="button" class="lobby__btn lobby__copy-btn" id="lobby-copy-code">Copy</button>
+            </div>
           </div>
 
           <ul class="lobby__players" id="lobby-players"></ul>

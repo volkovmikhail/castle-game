@@ -1,9 +1,7 @@
-'use strict';
-
 /**
  * Конфигурация сервера и сессий. Один процесс Node обслуживает много комнат.
  */
-module.exports = {
+export default {
   HTTP_PORT: Number(process.env.PORT) || 3000,
 
   /** Частота серверного тика симуляции (Phase 2). */

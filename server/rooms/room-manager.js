@@ -1,7 +1,5 @@
-'use strict';
-
-const config = require('../config');
-const { Room } = require('./room');
+import config from '../config.js';
+import { Room } from './room.js';
 
 /** Без похожих символов (0/O, 1/I) — код легко продиктовать. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -96,4 +94,4 @@ class RoomManager {
   }
 }
 
-module.exports = { RoomManager };
+export { RoomManager };

@@ -63,6 +63,7 @@ import { isForestFloorDecalSpriteType, isTreeSpriteType } from '../common/grid-p
 import { createBuildingHp } from './entities/building-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
+import { INTENT } from '../net/protocol.js';
 
 const MAX_BUILD_DISTANCE_CELLS = 2;
 const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
@@ -147,6 +148,9 @@ export class Game {
   /** Накопление времени до следующего выращивания одного дерева. */
   #treeRegrowAccumMs = 0;
 
+  /** Сетевой режим: камера один раз центрируется на своём замке. */
+  #localCastleCentered = false;
+
   /**
    * Creates an instance of Game.
    *
@@ -163,9 +167,10 @@ export class Game {
    *   ui: UI,
    *   knightImage: CanvasImageSource,
    *   localPlayer?: typeof PLAYER_PROFILES[number],
+   *   network?: import('../net/network.js').Network | null,
    * }} options
    */
-  constructor({ renderer, controls, stateManager, ui, knightImage, localPlayer }) {
+  constructor({ renderer, controls, stateManager, ui, knightImage, localPlayer, network = null }) {
     this.renderer = renderer;
     this.controls = controls;
     this.stateManager = stateManager;
@@ -178,6 +183,19 @@ export class Game {
     // Идентичность игрока назначает сервер (слот лобби). Локальный фолбэк —
     // первый профиль (одиночный запуск без мультиплеера).
     this.localPlayer = localPlayer ?? PLAYER_PROFILES[0];
+
+    /**
+     * Сетевой режим (Phase 2): симуляция авторитетна на сервере. Клиент — «зеркало»:
+     * рендерит снапшоты и шлёт намерения, локальную симуляцию не крутит.
+     * @type {import('../net/network.js').Network | null}
+     */
+    this.network = network;
+    this.networked = Boolean(network);
+    /** @type {any | null} последний снапшот, ожидающий применения. */
+    this.pendingSnapshot = null;
+    /** @type {Record<string, any> | null} ресурсы/слоты игроков из последнего снапшота. */
+    this.netPlayers = null;
+    this.#localCastleCentered = false;
 
     this.#knightSystem = new KnightSystem({
       applyChopHit: (anchorTx, anchorTy, knightOwnerId, damage) => {
@@ -335,12 +353,32 @@ export class Game {
   init() {
     //TestTilesGenerator.generateAllTiles(this.stateManager);
     this.ui.setPlayerBadge(this.localPlayer);
-    this.#setupWorld();
+    if (this.networked) {
+      this.#setupNetworkedWorld();
+    } else {
+      this.#setupWorld();
+    }
   }
 
   /** Пересобрать мир под текущий размер канваса (resize окна / панели). */
   resizeViewport() {
+    if (this.networked) {
+      // Состояние приходит с сервера — не пересоздаём мир, только вьюпорт/снег.
+      const rendererSize = this.renderer.getRendererSize();
+      this.controls.setViewportSize({ width: rendererSize.width, height: rendererSize.height });
+      this.snow = new SnowOverlay({ width: rendererSize.width, height: rendererSize.height });
+      return;
+    }
     this.#setupWorld();
+  }
+
+  /** Сетевой режим: вьюпорт + снег, мир и юниты придут снапшотом. */
+  #setupNetworkedWorld() {
+    this.stateManager.clear();
+    this.#knightSystem.clear();
+    const rendererSize = this.renderer.getRendererSize();
+    this.controls.setViewportSize({ width: rendererSize.width, height: rendererSize.height });
+    this.snow = new SnowOverlay({ width: rendererSize.width, height: rendererSize.height });
   }
 
   #setupWorld() {
@@ -378,6 +416,11 @@ export class Game {
 
   render() {
     this.renderer.clear();
+    this.renderer.drawExteriorForest({
+      scrollOffset: this.controls.getScrollOffset(),
+      worldWidthPx: WORLD_WIDTH_PX,
+      worldHeightPx: WORLD_HEIGHT_PX,
+    });
     this.renderer.drawWorldBorder({
       scrollOffset: this.controls.getScrollOffset(),
       x: 0,
@@ -471,6 +514,11 @@ export class Game {
   }
 
   update(timeStep) {
+    if (this.networked) {
+      this.#updateNetworked(timeStep);
+      return;
+    }
+
     this.snow?.update(timeStep, this.controls.getScrollOffset());
 
     this.#treeRegrowAccumMs += timeStep;
@@ -638,6 +686,245 @@ export class Game {
 
     this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
     this.#enforceStorageCapsAllPlayers();
+  }
+
+  // ── Сетевой режим (Phase 2): рендер снапшотов + ввод как намерения ──────────
+
+  /** Принять снапшот от сервера (применяется на следующем апдейте). */
+  pushSnapshot(snap) {
+    this.pendingSnapshot = snap;
+  }
+
+  #updateNetworked(timeStep) {
+    this.snow?.update(timeStep, this.controls.getScrollOffset());
+
+    if (this.pendingSnapshot) {
+      this.#applySnapshot(this.pendingSnapshot);
+      this.pendingSnapshot = null;
+    }
+
+    // Сглаживание рывков рыцарей между снапшотами (10 Гц → 60 fps).
+    this.#knightSystem.interpolate(timeStep);
+
+    if (!this.#localCastleCentered && this.localPlayer.castleStart) {
+      const c = this.localPlayer.castleStart;
+      this.controls.centerOn(c.x + TILE_SIZE, c.y + TILE_SIZE);
+      this.#localCastleCentered = true;
+    }
+
+    this.#handleNetworkedInput();
+  }
+
+  /** Восстановить карту/юнитов/ресурсы из снапшота сервера (клиент-зеркало). */
+  #applySnapshot(snap) {
+    if (Array.isArray(snap.cells)) {
+      this.stateManager.clear();
+      const now = performance.now();
+      for (const [x, y, spriteType, ownerUserId, hp, maxHp] of snap.cells) {
+        const tileData = tiles[spriteType];
+        if (!tileData) {
+          continue;
+        }
+        const mhp = maxHp ?? hp;
+        const entity =
+          hp != null
+            ? { hp, maxHp: mhp, regenerates: true, lastDamagedAtMs: hp < mhp ? now : 0 }
+            : null;
+        this.stateManager.setCell({ x, y, tileData, ownerUserId: ownerUserId ?? null, entity });
+      }
+    }
+
+    // Точечные обновления HP повреждённых объектов (полоски рубки в реальном времени).
+    if (Array.isArray(snap.hp)) {
+      const now = performance.now();
+      const state = this.stateManager.getState();
+      for (const [x, y, hp] of snap.hp) {
+        const cell = state.get(`${x}:${y}`);
+        if (cell?.entity) {
+          cell.entity.hp = hp;
+          cell.entity.lastDamagedAtMs = now;
+        }
+      }
+    }
+
+    if (Array.isArray(snap.knights)) {
+      this.#knightSystem.hydrateFromSnapshot(snap.knights, performance.now());
+    }
+
+    if (snap.players) {
+      this.netPlayers = snap.players;
+      const me = snap.players[this.localPlayer.userId];
+      if (me) {
+        this.ui.setResources({ wheat: me.wheat, wood: me.wood, gold: me.gold });
+        this.ui.setStorageCaps(me.maxStore, me.maxStore);
+        this.ui.setKnightSlots(me.knights, me.maxKnights);
+        this.ui.setKnightArmyLevels(
+          me.healthLevel,
+          me.attackLevel,
+          maxKnightUpgradeLevelForBlacksmiths(me.blacksmiths)
+        );
+      }
+    }
+  }
+
+  /** Отправить намерение; при отказе сервера показать тост. */
+  #sendIntent(type, payload) {
+    this.network?.sendIntent(type, payload).then((r) => {
+      if (r && r.ok === false && r.error) {
+        this.ui.showToast(r.error);
+      }
+    });
+  }
+
+  #handleNetworkedInput() {
+    const right = this.controls.consumeRightClickWorld();
+    if (right) {
+      const ids = this.#knightSystem.getSelectedIds();
+      if (ids.length > 0) {
+        // Зажат S → ПКМ тоже просто перемещает, без удара (как S + ЛКМ).
+        const payload = { wx: right.wx, wy: right.wy, knightIds: ids };
+        if (this.controls.isMovePressed()) {
+          payload.moveOnly = true;
+        }
+        this.#sendIntent(INTENT.MOVE_ORDER, payload);
+      }
+    }
+
+    const marqueeRect = this.controls.consumeMarqueeSelectionWorldRect();
+    if (marqueeRect !== null) {
+      this.#knightSystem.selectUnitsInWorldRect(
+        marqueeRect.minX,
+        marqueeRect.minY,
+        marqueeRect.maxX,
+        marqueeRect.maxY,
+        this.localPlayer.userId
+      );
+    }
+
+    if (this.controls.consumeSelectAllKnightsRequest()) {
+      this.#knightSystem.selectAllKnightsForOwner(this.localPlayer.userId);
+    }
+
+    const clickedCords = this.controls.getClickedCoords();
+    if (clickedCords === null) {
+      return;
+    }
+
+    const { tx, ty, shiftKey, worldPx, worldPy } = clickedCords;
+
+    // Зажат S → приказ «идти к точке» выделенным рыцарям (без удара; курсор-прицел).
+    // Без S левый клик ведёт себя как раньше (камера/выбор/постройка).
+    if (this.controls.isMovePressed()) {
+      const ids = this.#knightSystem.getSelectedIds();
+      if (ids.length > 0) {
+        this.#sendIntent(INTENT.MOVE_ORDER, {
+          wx: worldPx,
+          wy: worldPy,
+          knightIds: ids,
+          moveOnly: true,
+        });
+      }
+      return;
+    }
+
+    // Клик по своему рыцарю — выделение/снятие.
+    if (this.#knightSystem.trySelectAt(worldPx, worldPy, shiftKey, this.localPlayer.userId)) {
+      return;
+    }
+
+    // Активен режим постройки/тренировки — ставим здание/рыцаря.
+    const selectedBuilding = this.ui.getSelectedBuilding();
+    if (selectedBuilding) {
+      if (selectedBuilding === KNIGHT_TOOL_KEY) {
+        this.#sendIntent(INTENT.TRAIN_KNIGHT, { worldPx, worldPy });
+        // Режим тренировки остаётся активным — ставим рыцарей подряд (ESC / Cancel / выбор здания).
+      } else {
+        this.#sendIntent(INTENT.PLACE_BUILDING, { toolKey: selectedBuilding, tx, ty });
+        this.ui.exitBuildMode();
+      }
+      return;
+    }
+
+    // Клик по своему зданию — магазин/кузница/ферма.
+    if (this.#tryNetClickStructures(tx, ty)) {
+      return;
+    }
+
+    // Пустой клик — снять выделение.
+    this.#knightSystem.clearSelection();
+  }
+
+  /** Клик по своим рынку/замку/кузнице/ферме в сетевом режиме → модалки/намерения. */
+  #tryNetClickStructures(tx, ty) {
+    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
+    if (!cell?.isRenderable) {
+      return false;
+    }
+    const st = cell.spriteType;
+    const mine = cell.ownerUserId === this.localPlayer.userId;
+
+    if (st === 'farmStage4') {
+      if (!mine) {
+        this.ui.showToast('This is not your farm.');
+        return true;
+      }
+      this.#sendIntent(INTENT.HARVEST_FARM, { tx, ty });
+      return true;
+    }
+
+    if (st === 'market') {
+      if (!mine) {
+        this.ui.showToast('This is not your market.');
+        return true;
+      }
+      this.ui.openMarketShop({
+        getResources: () => this.#netLocalResources(),
+        onExchange: (kind, qty) => {
+          this.#sendIntent(INTENT.SHOP_EXCHANGE, { kind, qty });
+          return { ok: true };
+        },
+      });
+      return true;
+    }
+
+    if (st === 'castle' || st === BLACKSMITH_COMPLETED_SPRITE_TYPE) {
+      if (!mine) {
+        this.ui.showToast(st === 'castle' ? 'This is not your castle.' : 'This is not your blacksmith.');
+        return true;
+      }
+      const me = this.netPlayers?.[this.localPlayer.userId];
+      if (!me || me.blacksmiths < 1) {
+        this.ui.showToast('A blacksmith is required to upgrade knights.');
+        return true;
+      }
+      this.ui.openKnightUpgrade({
+        getViewState: () => {
+          const p = this.netPlayers?.[this.localPlayer.userId];
+          const blacksmiths = p?.blacksmiths ?? 0;
+          return {
+            healthLevel: p?.healthLevel ?? 0,
+            attackLevel: p?.attackLevel ?? 0,
+            maxLevel: maxKnightUpgradeLevelForBlacksmiths(blacksmiths),
+            blacksmithCount: blacksmiths,
+            resources: this.#netLocalResources(),
+          };
+        },
+        onUpgrade: (kind) => {
+          this.#sendIntent(INTENT.UPGRADE_ARMY, { kind });
+          return { ok: true };
+        },
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  #netLocalResources() {
+    const me = this.netPlayers?.[this.localPlayer.userId];
+    return me
+      ? { wheat: me.wheat, wood: me.wood, gold: me.gold }
+      : { wheat: 0, wood: 0, gold: 0 };
   }
 
   #resetPlayerResources() {

@@ -60,7 +60,7 @@ async function boot() {
  *   network: Network,
  * }} opts
  */
-function startGame({ tileMap, knightImage, localPlayer }) {
+function startGame({ tileMap, knightImage, localPlayer, network }) {
   if (canvasStage) {
     syncCanvasSize({ canvas, stage: canvasStage });
   }
@@ -72,9 +72,13 @@ function startGame({ tileMap, knightImage, localPlayer }) {
 
   controls.init();
 
-  const game = new Game({ renderer, controls, stateManager, ui, knightImage, localPlayer });
+  const game = new Game({ renderer, controls, stateManager, ui, knightImage, localPlayer, network });
 
   game.init();
+
+  // Сервер авторитетен: его снапшоты — единственный источник мира. Клиент рендерит
+  // их, а ввод уходит намерениями (см. Game.#handleNetworkedInput).
+  network.onSnapshot((snap) => game.pushSnapshot(snap));
 
   if (canvasStage) {
     attachCanvasResize({ canvas, stage: canvasStage, game });
@@ -82,9 +86,6 @@ function startGame({ tileMap, knightImage, localPlayer }) {
 
   const gameLoop = new GameLoop({ game });
   gameLoop.start();
-
-  // PHASE 2: здесь подписка на network.onSnapshot(...) для рендера серверного
-  // состояния и перевод ввода в network.sendIntent(...) вместо локальных мутаций.
 }
 
 /** @param {Network} network */

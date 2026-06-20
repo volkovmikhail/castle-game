@@ -22,6 +22,7 @@ export class Lobby {
     this.errorEl = document.getElementById('lobby-error');
 
     this.roomCodeEl = document.getElementById('lobby-room-code');
+    this.copyBtn = document.getElementById('lobby-copy-code');
     this.playersEl = document.getElementById('lobby-players');
     this.roomHintEl = document.getElementById('lobby-room-hint');
     this.readyBtn = document.getElementById('lobby-ready');
@@ -81,6 +82,22 @@ export class Lobby {
     this.readyBtn.addEventListener('click', () => this.#onToggleReady());
     this.startBtn.addEventListener('click', () => this.#onStart());
     this.leaveBtn.addEventListener('click', () => this.#onLeave());
+    this.copyBtn.addEventListener('click', () => this.#onCopyCode());
+  }
+
+  async #onCopyCode() {
+    const code = this.lastState?.code;
+    if (!code) {
+      return;
+    }
+    const ok = await copyToClipboard(code);
+    const original = 'Copy';
+    this.copyBtn.textContent = ok ? 'Copied!' : 'Failed';
+    this.copyBtn.disabled = true;
+    setTimeout(() => {
+      this.copyBtn.textContent = original;
+      this.copyBtn.disabled = false;
+    }, 1200);
   }
 
   #saveName() {
@@ -218,5 +235,36 @@ export class Lobby {
 
   #hide() {
     this.root.hidden = true;
+  }
+}
+
+/**
+ * Скопировать текст в буфер обмена. Clipboard API (secure context, в т.ч. localhost)
+ * с откатом на скрытый textarea + execCommand для прочих случаев.
+ *
+ * @param {string} text
+ * @returns {Promise<boolean>}
+ */
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // упадём в фолбэк ниже
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
   }
 }
