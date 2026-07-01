@@ -23,7 +23,7 @@ import {
   getCastleUpgradeCost,
 } from '../constants/castle-upgrades.js';
 import { BASE_STORAGE_CAP_WHEAT_WOOD } from '../constants/resources.js';
-import { getShopExchangePreviewLine, SHOP_QUANTITY_STEP } from '../constants/shop-exchange.js';
+import { getShopExchangePreviewLine, shopQuantityStepForKind } from '../constants/shop-exchange.js';
 
 export class UI {
   static #previewTargetSize = 56;
@@ -60,6 +60,7 @@ export class UI {
   #sidebarTrainKnightBtnEl = null;
   #sidebarTrainKnightCostEl = null;
   #sidebarCancelBtnEl = null;
+  #sidebarActionsRowEl = null;
   /** @type {HTMLElement | null} */
   #buildModalEl = null;
   #resourceWheatEl = null;
@@ -90,6 +91,9 @@ export class UI {
    * } | null}
    */
   #marketShopCallbacks = null;
+
+  /** Обновляет подписи кнопок +/− в магазине (назначается в #initMarketShopModal). */
+  #updateMarketStepButtons = () => {};
 
   /** @type {HTMLElement | null} */
   #knightUpgradeModalEl = null;
@@ -145,6 +149,7 @@ export class UI {
     this.#sidebarTrainKnightBtnEl = document.getElementById('sidebar-train-knight-btn');
     this.#sidebarTrainKnightCostEl = document.getElementById('sidebar-train-knight-cost');
     this.#sidebarCancelBtnEl = document.getElementById('sidebar-cancel-btn');
+    this.#sidebarActionsRowEl = document.getElementById('sidebar-actions-row');
     if (this.#sidebarTrainKnightCostEl) {
       this.#sidebarTrainKnightCostEl.textContent = formatCostLineForTool(KNIGHT_TOOL_KEY);
     }
@@ -322,13 +327,11 @@ export class UI {
   #updateActionButtonsState() {
     const active = this.#selectedBuilding !== null;
     const isKnight = this.#selectedBuilding === KNIGHT_TOOL_KEY;
-    const isOtherBuilding = active && !isKnight;
 
-    // Основные кнопки сохраняют своё действие; подсвечиваем активный режим размещения.
-    this.#sidebarBuildBtnEl?.classList.toggle('sidebar-build-btn--active', isOtherBuilding);
-    this.#sidebarTrainKnightBtnEl?.classList.toggle('sidebar-build-btn--active', isKnight);
-
-    // Единая кнопка отмены — видна, пока активен любой режим (постройка или тренировка).
+    // Пока активен режим постройки/тренировки — на месте двух кнопок показываем «Отмена».
+    if (this.#sidebarActionsRowEl) {
+      this.#sidebarActionsRowEl.hidden = active;
+    }
     if (this.#sidebarCancelBtnEl) {
       this.#sidebarCancelBtnEl.hidden = !active;
       this.#sidebarCancelBtnEl.textContent = isKnight
@@ -347,9 +350,7 @@ export class UI {
     if (!qtyInput || !previewEl || !captionEl) {
       return;
     }
-    const kind = /** @type {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'} */ (
-      this.#marketModalEl.querySelector('input[name="market-exchange"]:checked')?.value ?? 'wheatToGold'
-    );
+    const kind = this.#selectedMarketExchangeKind();
     const resources = this.#marketShopCallbacks.getResources() ?? {
       wheat: 0,
       wood: 0,
@@ -374,6 +375,23 @@ export class UI {
     }
 
     const qtyInput = document.getElementById('market-shop-qty');
+    const minusBtn = document.getElementById('market-shop-qty-minus');
+    const plusBtn = document.getElementById('market-shop-qty-plus');
+
+    const currentStep = () => shopQuantityStepForKind(this.#selectedMarketExchangeKind());
+
+    // Подписи и aria кнопок зависят от направления обмена (10 за золото, 100 за пшеницу/дерево).
+    this.#updateMarketStepButtons = () => {
+      const step = currentStep();
+      if (minusBtn) {
+        minusBtn.textContent = `−${step}`;
+        minusBtn.setAttribute('aria-label', `Minus ${step}`);
+      }
+      if (plusBtn) {
+        plusBtn.textContent = `+${step}`;
+        plusBtn.setAttribute('aria-label', `Plus ${step}`);
+      }
+    };
 
     const stepQty = (delta) => {
       if (!qtyInput) {
@@ -384,26 +402,35 @@ export class UI {
       this.#refreshMarketShopPreview();
     };
 
-    document.getElementById('market-shop-qty-minus')?.addEventListener('click', () => {
-      stepQty(-SHOP_QUANTITY_STEP);
+    minusBtn?.addEventListener('click', () => {
+      stepQty(-currentStep());
     });
-    document.getElementById('market-shop-qty-plus')?.addEventListener('click', () => {
-      stepQty(SHOP_QUANTITY_STEP);
+    plusBtn?.addEventListener('click', () => {
+      stepQty(currentStep());
     });
 
-    qtyInput?.addEventListener('input', () => this.#refreshMarketShopPreview());
+    // Быстрый ввод: печатаешь 5 поверх стартового 0 → «5», затем «50», «500».
+    // Начальный 0 выделяется при открытии, а лишние ведущие нули срезаем здесь.
+    qtyInput?.addEventListener('focus', () => qtyInput.select());
+    qtyInput?.addEventListener('input', () => {
+      if (/^0\d+/.test(qtyInput.value)) {
+        qtyInput.value = String(parseInt(qtyInput.value, 10));
+      }
+      this.#refreshMarketShopPreview();
+    });
 
     for (const radio of this.#marketModalEl.querySelectorAll('input[name="market-exchange"]')) {
-      radio.addEventListener('change', () => this.#refreshMarketShopPreview());
+      radio.addEventListener('change', () => {
+        this.#updateMarketStepButtons();
+        this.#refreshMarketShopPreview();
+      });
     }
 
     document.getElementById('market-shop-confirm')?.addEventListener('click', () => {
       if (!this.#marketShopCallbacks || !qtyInput) {
         return;
       }
-      const kind = /** @type {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'} */ (
-        this.#marketModalEl.querySelector('input[name="market-exchange"]:checked')?.value ?? 'wheatToGold'
-      );
+      const kind = this.#selectedMarketExchangeKind();
       const qty = Number(qtyInput.value);
       const result = this.#marketShopCallbacks.onExchange(kind, qty);
       if (!result.ok && result.message) {
@@ -418,6 +445,20 @@ export class UI {
     for (const el of this.#marketModalEl.querySelectorAll('[data-market-shop-close]')) {
       el.addEventListener('click', close);
     }
+  }
+
+  /**
+   * Текущее выбранное направление обмена в магазине.
+   *
+   * @returns {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'}
+   */
+  #selectedMarketExchangeKind() {
+    const value = this.#marketModalEl?.querySelector(
+      'input[name="market-exchange"]:checked'
+    )?.value;
+    return /** @type {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'} */ (
+      value ?? 'wheatToGold'
+    );
   }
 
   /**
@@ -439,14 +480,19 @@ export class UI {
     this.#marketModalEl.hidden = false;
     this.#marketModalEl.setAttribute('aria-hidden', 'false');
 
-    const qtyInput = document.getElementById('market-shop-qty');
+    const qtyInput = /** @type {HTMLInputElement | null} */ (
+      document.getElementById('market-shop-qty')
+    );
     if (qtyInput) {
-      qtyInput.value = String(SHOP_QUANTITY_STEP);
+      qtyInput.value = '0';
     }
 
+    this.#updateMarketStepButtons();
     this.#refreshMarketShopPreview();
 
+    // Фокус + выделение: первая же цифра заменит стартовый 0 (быстрый ввод 500 и т.п.).
     qtyInput?.focus();
+    qtyInput?.select();
   }
 
   closeMarketShop() {
@@ -456,6 +502,10 @@ export class UI {
     this.#marketModalEl.hidden = true;
     this.#marketModalEl.setAttribute('aria-hidden', 'true');
     this.#marketShopCallbacks = null;
+  }
+
+  isMarketShopOpen() {
+    return Boolean(this.#marketModalEl && !this.#marketModalEl.hidden);
   }
 
   /**
@@ -702,6 +752,10 @@ export class UI {
     this.#knightUpgradeCallbacks = null;
   }
 
+  isKnightUpgradeOpen() {
+    return Boolean(this.#knightUpgradeModalEl && !this.#knightUpgradeModalEl.hidden);
+  }
+
   #initCastleUpgradeModal() {
     this.#castleUpgradeModalEl = document.getElementById('castle-upgrade-modal');
     if (!this.#castleUpgradeModalEl) {
@@ -822,6 +876,10 @@ export class UI {
     this.#castleUpgradeCallbacks = null;
   }
 
+  isCastleUpgradeOpen() {
+    return Boolean(this.#castleUpgradeModalEl && !this.#castleUpgradeModalEl.hidden);
+  }
+
   #refreshBuildingAffordability() {
     const root = document.getElementById('building-selector');
     if (!root || !this.#lastResources) {
@@ -852,6 +910,32 @@ export class UI {
 
   getSelectedBuilding() {
     return this.#selectedBuilding;
+  }
+
+  /**
+   * Переключить режим тренировки воинов (кнопка «1»): включён — выключаем, иначе включаем.
+   */
+  toggleTrainKnightMode() {
+    if (this.#selectedBuilding === KNIGHT_TOOL_KEY) {
+      this.#cancelPlacement();
+    } else {
+      this.#armBuilding(KNIGHT_TOOL_KEY);
+    }
+  }
+
+  /**
+   * Переключить режим постройки (кнопка «2»): открыто окно выбора или выбрано здание —
+   * выключаем; иначе открываем окно выбора здания.
+   */
+  toggleBuildMode() {
+    const buildModalOpen = Boolean(this.#buildModalEl && !this.#buildModalEl.hidden);
+    const buildingArmed = this.#selectedBuilding !== null && this.#selectedBuilding !== KNIGHT_TOOL_KEY;
+    if (buildModalOpen || buildingArmed) {
+      this.closeBuildModal();
+      this.#cancelPlacement();
+    } else {
+      this.openBuildModal();
+    }
   }
 
   /**

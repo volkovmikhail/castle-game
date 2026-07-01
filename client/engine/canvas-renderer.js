@@ -198,19 +198,39 @@ export class CanvasRenderer {
     if (cell.spriteType !== 'castle') {
       sprite.drawPostEffects(this.ctx, this.tileMap, performance.now(), cell);
     }
+    // Полоску HP рисуем отдельным проходом (drawStructureHpBarsOnTop), чтобы соседние
+    // здания её не перекрывали.
+  }
 
-    const ent = cell.entity;
-    if (cell.isRenderable && ent && typeof ent.hp === 'number' && typeof ent.maxHp === 'number') {
+  /**
+   * Полоски HP построек/деревьев — отдельным проходом поверх всех спрайтов мира,
+   * чтобы соседние здания их не перекрывали.
+   *
+   * @param {{
+   *   state: Map<string, Cell>;
+   *   scrollOffset: { offsetX: number; offsetY: number };
+   * }}
+   */
+  drawStructureHpBarsOnTop({ state, scrollOffset: { offsetX, offsetY } }) {
+    for (const [cords, cell] of state.entries()) {
+      const ent = cell.entity;
+      if (!cell.isRenderable || !ent || typeof ent.hp !== 'number' || typeof ent.maxHp !== 'number') {
+        continue;
+      }
+      const tileData = tiles[cell.spriteType];
+      if (!tileData) {
+        continue;
+      }
+      const [wx, wy] = cords.split(':').map(Number);
       drawStructureHpBar(this.ctx, {
-        spriteLeft: x,
-        spriteTop: y,
+        spriteLeft: wx + offsetX,
+        spriteTop: wy + offsetY,
         spriteWidth: tileData.width,
         hp: ent.hp,
         maxHp: ent.maxHp,
         lastDamagedAtMs: typeof ent.lastDamagedAtMs === 'number' ? ent.lastDamagedAtMs : 0,
       });
     }
-
   }
 
   /**

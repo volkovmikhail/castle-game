@@ -16,13 +16,29 @@ export const SHOP_WOOD_PER_SPENT_GOLD = 8;
 /** Сколько пшеницы даётся за 1 потраченное золото. */
 export const SHOP_WHEAT_PER_SPENT_GOLD = 8;
 
-/** Шаг изменения количества кнопками +/−. */
+/** Шаг изменения количества кнопками +/− (когда отдаёшь золото). */
 export const SHOP_QUANTITY_STEP = 10;
+
+/** Шаг для больших количеств пшеницы/дерева (когда их продаёшь). */
+export const SHOP_WHEAT_WOOD_QUANTITY_STEP = 100;
 
 /**
  * @typedef {import('./resources.js').PlayerResources} PlayerResources
  * @typedef {'wheatToGold' | 'woodToGold' | 'goldToWood' | 'goldToWheat'} ShopExchangeKind
  */
+
+/**
+ * Шаг кнопок +/− для данного направления обмена: 100, когда количество измеряется
+ * в пшенице/дереве (их продаёшь), и 10, когда отдаёшь золото.
+ *
+ * @param {ShopExchangeKind} kind
+ * @returns {number}
+ */
+export function shopQuantityStepForKind(kind) {
+  return kind === 'wheatToGold' || kind === 'woodToGold'
+    ? SHOP_WHEAT_WOOD_QUANTITY_STEP
+    : SHOP_QUANTITY_STEP;
+}
 
 /**
  * Текст предпросмотра для модалки магазина.

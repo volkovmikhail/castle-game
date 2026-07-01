@@ -119,6 +119,12 @@ class KnightUnit {
     /** @type {number | null} id вражеского рыцаря (цель ближнего боя). */
     this.chopTargetKnightId = null;
 
+    /**
+     * Приказ «просто идти» (S + клик): пока true, авто-атака по врагам рядом не срабатывает.
+     * Сбрасывается по прибытии в точку или при контекстном приказе (ПКМ).
+     */
+    this.plainMove = false;
+
     /** Ширина/высота цели удара в px (якорь — chopTreeTile). */
     this.attackFpW = TILE_SIZE;
     this.attackFpH = TILE_SIZE;
@@ -564,6 +570,11 @@ export class KnightSystem {
       return;
     }
 
+    // Контекстный приказ (ПКМ) отменяет режим «просто идти» — авто-атака снова разрешена.
+    for (const u of selected) {
+      u.plainMove = false;
+    }
+
     if (isTree) {
       this.#orderChopGroup(selected, { x: treeTx, y: treeTy }, state, worldWidthPx, worldHeightPx, showToast);
       return;
@@ -662,6 +673,7 @@ export class KnightSystem {
       if (path !== null) {
         u.path = path;
         u.mode = 'move';
+        u.plainMove = true;
         this.#clearMeleeTarget(u);
         u.chopCooldownMs = 0;
         u.walkAnimStartMs = performance.now();
@@ -872,6 +884,10 @@ export class KnightSystem {
       return;
     }
     if (u.chopTreeTile != null || u.chopTargetKnightId != null) {
+      return;
+    }
+    // Приказ «просто идти» (S): не отвлекаемся на врагов по пути.
+    if (u.plainMove) {
       return;
     }
     const enemy = this.#findNearestEnemyKnightInRadius(u, KNIGHT_AUTO_ATTACK_ENEMY_RADIUS_PX);
@@ -1121,6 +1137,7 @@ export class KnightSystem {
 
       if (u.mode === 'move' && u.path.length === 0 && !this.#hasMeleeTarget(u) && !u.pixelGoal) {
         u.mode = 'idle';
+        u.plainMove = false;
         u.walkAnimStartMs = null;
         u.idleNextAltAt = null;
         u.faceLeft = false;

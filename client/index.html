@@ -57,23 +57,43 @@
                 <span class="resource-row__value" id="army-attack-level">0 / 0</span>
               </li>
             </ul>
-            <button type="button" class="sidebar-build-btn" id="sidebar-train-knight-btn">Train knight</button>
-            <span class="sidebar-build-cost" id="sidebar-train-knight-cost"></span>
           </section>
 
-          <section class="sidebar__section sidebar__section--buildings">
-            <h2 class="sidebar__section-title">Building</h2>
-            <button type="button" class="sidebar-build-btn" id="sidebar-build-btn">Build</button>
+          <section class="sidebar__section sidebar__section--actions">
+            <div class="sidebar-actions" id="sidebar-actions-row">
+              <div class="sidebar-action">
+                <button type="button" class="sidebar-build-btn" id="sidebar-train-knight-btn">Train</button>
+                <span class="sidebar-build-cost" id="sidebar-train-knight-cost"></span>
+              </div>
+              <div class="sidebar-action">
+                <button type="button" class="sidebar-build-btn" id="sidebar-build-btn">Build</button>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="sidebar-build-btn sidebar-build-btn--cancel sidebar-cancel-btn"
+              id="sidebar-cancel-btn"
+              hidden
+            >
+              Cancel placement (Esc)
+            </button>
           </section>
 
-          <button
-            type="button"
-            class="sidebar-build-btn sidebar-build-btn--cancel sidebar-cancel-btn"
-            id="sidebar-cancel-btn"
-            hidden
-          >
-            Cancel placement (Esc)
-          </button>
+          <section class="sidebar__section sidebar__section--hotkeys">
+            <h2 class="sidebar__section-title">Hotkeys</h2>
+            <ul class="hotkey-list" aria-label="Keyboard shortcuts">
+              <li class="hotkey-row"><kbd class="hotkey-key">1</kbd><span class="hotkey-label">Train knights</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">2</kbd><span class="hotkey-label">Build mode</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">X</kbd><span class="hotkey-label">Shop</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">Z</kbd><span class="hotkey-label">Blacksmith</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">C</kbd><span class="hotkey-label">Cannon</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">Q</kbd><span class="hotkey-label">Select all troops</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">R</kbd><span class="hotkey-label">Clear selection</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">E</kbd><span class="hotkey-label">Move order (hold)</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">WASD</kbd><span class="hotkey-label">Move camera</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">F</kbd><span class="hotkey-label">Go to castle</span></li>
+            </ul>
+          </section>
         </div>
       </aside>
 
@@ -118,8 +138,8 @@
         <div class="market-modal__qty-block">
           <span class="market-modal__qty-label" id="market-shop-qty-caption">Amount (you give)</span>
           <div class="market-modal__qty-row">
-            <button type="button" class="market-modal__step-btn" id="market-shop-qty-minus" aria-label="Minus 10">
-              −10
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-minus" aria-label="Minus 100">
+              −100
             </button>
             <input
               type="number"
@@ -127,11 +147,11 @@
               class="market-modal__qty-input"
               min="0"
               step="1"
-              value="10"
+              value="0"
               inputmode="numeric"
             />
-            <button type="button" class="market-modal__step-btn" id="market-shop-qty-plus" aria-label="Plus 10">
-              +10
+            <button type="button" class="market-modal__step-btn" id="market-shop-qty-plus" aria-label="Plus 100">
+              +100
             </button>
           </div>
         </div>
@@ -337,6 +357,191 @@
         <button type="button" class="lobby__btn lobby__btn--primary lobby__btn--block" id="game-over-back">
           Back to lobby
         </button>
+      </div>
+    </div>
+
+    <div class="corner-fabs">
+      <button
+        type="button"
+        class="help-fab"
+        id="help-fab"
+        aria-label="Game rules and controls"
+        title="Rules &amp; controls"
+      >
+        ?
+      </button>
+      <button
+        type="button"
+        class="help-fab"
+        id="settings-fab"
+        aria-label="Settings"
+        title="Settings"
+      >
+        ⚙
+      </button>
+    </div>
+
+    <div id="settings-modal" class="rules-modal" hidden aria-hidden="true">
+      <div class="rules-modal__backdrop" data-settings-close tabindex="-1"></div>
+      <div class="rules-modal__panel settings-modal__panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <header class="rules-modal__head">
+          <h2 id="settings-title" class="rules-modal__title">Settings</h2>
+          <button type="button" class="rules-modal__x" data-settings-close aria-label="Close">×</button>
+        </header>
+
+        <div class="rules-modal__body">
+          <section class="rules-block">
+            <h3 class="rules-block__title">Scroll speed</h3>
+            <p class="rules-block__note">How fast the map moves when you pan with the mouse wheel or trackpad. Default: <span id="settings-scroll-default">0.4</span>.</p>
+            <div class="settings-row">
+              <input
+                type="number"
+                id="settings-scroll-input"
+                class="settings-input"
+                min="0.05"
+                max="5"
+                step="0.05"
+                inputmode="decimal"
+              />
+              <button type="button" class="market-modal__btn" id="settings-scroll-reset">Reset to default</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="rules-modal" class="rules-modal" hidden aria-hidden="true">
+      <div class="rules-modal__backdrop" data-rules-close tabindex="-1"></div>
+      <div class="rules-modal__panel" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+        <header class="rules-modal__head">
+          <h2 id="rules-title" class="rules-modal__title">How to play</h2>
+          <button type="button" class="rules-modal__x" id="rules-close-x" data-rules-close aria-label="Close">×</button>
+        </header>
+
+        <div class="rules-modal__body">
+          <section class="rules-block">
+            <h3 class="rules-block__title">Objective</h3>
+            <p>Online battle for 2–4 players — <strong>last castle standing wins</strong>. Send your knights to destroy enemy castles. If your own castle (600 HP) falls, you are eliminated. Leaving a match in progress counts as a defeat.</p>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Resources</h3>
+            <p>You start with <strong>500 wheat · 500 wood · 1000 gold</strong>. Wheat and wood are capped at 500 (+250 per Barn); gold has no limit.</p>
+            <ul class="rules-list">
+              <li><strong>Wood</strong> — send a knight onto forest to chop it: bushes/saplings 5, trees/spruce 10, big trees 15, logs 50.</li>
+              <li><strong>Gold</strong> — send a knight onto rocks to mine 1–2 gold.</li>
+              <li><strong>Wheat</strong> — grow farms and harvest ripe fields (+15 wheat each).</li>
+            </ul>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Buildings</h3>
+            <p class="rules-block__note">Cost order: wheat · wood · gold. Each building has its own key mechanic.</p>
+            <ul class="rules-buildings">
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Farm</span>
+                  <span class="rules-building__cost">50 wood · 25 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Grows through 4 stages, then can be harvested for 15 wheat.</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Farmhouse</span>
+                  <span class="rules-building__cost">20 wheat · 70 wood · 40 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Automatically harvests ripe farms around it — passive wheat.</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Barn</span>
+                  <span class="rules-building__cost">25 wheat · 80 wood · 45 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Raises the wheat &amp; wood storage cap by 250 each.</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">House</span>
+                  <span class="rules-building__cost">15 wheat · 60 wood · 35 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Adds 5 knight slots (base cap is 5 knights).</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Blacksmith</span>
+                  <span class="rules-building__cost">30 wheat · 90 wood · 55 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Unlocks army upgrades — each one adds 5 upgrade levels.</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Market</span>
+                  <span class="rules-building__cost">50 wheat · 50 wood · 50 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Trade resources for gold and back. Only one per player.</p>
+              </li>
+              <li class="rules-building">
+                <div class="rules-building__head">
+                  <span class="rules-building__name">Knight (train)</span>
+                  <span class="rules-building__cost">25 wheat · 25 gold</span>
+                </div>
+                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Your fighting unit — gathers resources and attacks enemies.</p>
+              </li>
+            </ul>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Knights &amp; combat</h3>
+            <ul class="rules-list">
+              <li>Base knight: <strong>40 HP · 15 damage</strong>. Cap is 5 knights + 5 per House.</li>
+              <li>Knights <strong>auto-attack</strong> enemy knights within 2 tiles. A move-only order (hold <kbd>E</kbd>) walks them there without attacking.</li>
+              <li>Move knights onto trees, rocks or ripe farms to gather; onto enemy buildings to attack them (15 damage per hit; buildings regenerate 10 HP/s).</li>
+            </ul>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Blacksmith upgrades</h3>
+            <p>Each Blacksmith grants +5 upgrade levels for your whole army. <strong>Health</strong>: +10 HP per level. <strong>Attack</strong>: +5 damage per level.</p>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Castle cannon</h3>
+            <p>Your castle auto-fires at enemy knights within 3 tiles — 50 damage, 1 shot per second. Upgrade it: <strong>Range</strong> +1 tile (max 5), <strong>Damage</strong> +15 (no limit), <strong>Fire rate</strong> −0.1 s per level (max 5).</p>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Market rates</h3>
+            <p>10 wheat or 10 wood → 1 gold. 1 gold → 8 wheat or 8 wood.</p>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Mouse</h3>
+            <ul class="rules-list">
+              <li><strong>Left click</strong> — select a knight, place a building/knight, or open your building's panel.</li>
+              <li><strong>Left drag</strong> on empty ground — pan the camera.</li>
+              <li><strong>Shift + drag</strong> or <strong>right drag</strong> — box-select troops.</li>
+              <li><strong>Right click</strong> — order selected troops to move / attack there.</li>
+              <li><strong>Mouse wheel / trackpad</strong> — pan the map. <strong>Hold Space</strong> — show who owns what.</li>
+            </ul>
+          </section>
+
+          <section class="rules-block">
+            <h3 class="rules-block__title">Hotkeys</h3>
+            <ul class="rules-keys">
+              <li><kbd>1</kbd> Train knights (toggle)</li>
+              <li><kbd>2</kbd> Build mode (toggle)</li>
+              <li><kbd>X</kbd> Shop</li>
+              <li><kbd>Z</kbd> Blacksmith</li>
+              <li><kbd>C</kbd> Cannon</li>
+              <li><kbd>Q</kbd> Select all troops</li>
+              <li><kbd>R</kbd> Clear selection</li>
+              <li><kbd>E</kbd> Move order (hold)</li>
+              <li><kbd>WASD</kbd> Move camera</li>
+              <li><kbd>F</kbd> Go to your castle</li>
+              <li><kbd>Esc</kbd> Cancel / close</li>
+            </ul>
+          </section>
+        </div>
       </div>
     </div>
 

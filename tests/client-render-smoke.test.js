@@ -37,6 +37,7 @@ function mockControls() {
     init: () => {},
     setViewportSize: () => {},
     centerOn: () => {},
+    updateKeyboardPan: () => {},
     getScrollOffset: () => ({ offsetX: 0, offsetY: 0 }),
     getSelectedCoords: () => ({ tx: 0, ty: 0, x: 0, y: 0 }),
     isSpacePressed: () => false,
@@ -45,6 +46,13 @@ function mockControls() {
     consumeRightClickWorld: () => null,
     consumeMarqueeSelectionWorldRect: () => null,
     consumeSelectAllKnightsRequest: () => false,
+    consumeOpenShopRequest: () => false,
+    consumeOpenForgeRequest: () => false,
+    consumeOpenCastleRequest: () => false,
+    consumeToggleTrainRequest: () => false,
+    consumeToggleBuildRequest: () => false,
+    consumeClearSelectionRequest: () => false,
+    consumeJumpToCastleRequest: () => false,
     getClickedCoords: () => null,
   };
 }

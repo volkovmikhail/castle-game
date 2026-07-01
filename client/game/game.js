@@ -526,6 +526,9 @@ export class Game {
 
     this.renderer.drawCastleFlagsOnTop({ state, scrollOffset });
 
+    // Полоски HP — поверх всех зданий, чтобы соседние постройки их не перекрывали.
+    this.renderer.drawStructureHpBarsOnTop({ state, scrollOffset });
+
     this.renderer.drawPlayerBuildingTrianglesOnTop({
       state,
       scrollOffset,
@@ -542,6 +545,8 @@ export class Game {
   }
 
   update(timeStep) {
+    this.controls.updateKeyboardPan(timeStep);
+
     if (this.networked) {
       this.#updateNetworked(timeStep);
       return;
@@ -818,6 +823,8 @@ export class Game {
   }
 
   #handleNetworkedInput() {
+    this.#handleHotkeys();
+
     const right = this.controls.consumeRightClickWorld();
     if (right) {
       const ids = this.#knightSystem.getSelectedIds();
@@ -966,13 +973,7 @@ export class Game {
         this.ui.showToast('This is not your market.');
         return true;
       }
-      this.ui.openMarketShop({
-        getResources: () => this.#netLocalResources(),
-        onExchange: (kind, qty) => {
-          this.#sendIntent(INTENT.SHOP_EXCHANGE, { kind, qty });
-          return { ok: true };
-        },
-      });
+      this.#openMarketShopModal();
       return true;
     }
 
@@ -981,21 +982,7 @@ export class Game {
         this.ui.showToast('This is not your castle.');
         return true;
       }
-      this.ui.openCastleUpgrade({
-        getViewState: () => {
-          const p = this.netPlayers?.[this.localPlayer.userId];
-          return {
-            rangeLevel: p?.castleRangeLevel ?? 0,
-            damageLevel: p?.castleDamageLevel ?? 0,
-            speedLevel: p?.castleSpeedLevel ?? 0,
-            resources: this.#netLocalResources(),
-          };
-        },
-        onUpgrade: (kind) => {
-          this.#sendIntent(INTENT.UPGRADE_CASTLE, { kind });
-          return { ok: true };
-        },
-      });
+      this.#openCastleUpgradeModal();
       return true;
     }
 
@@ -1009,27 +996,119 @@ export class Game {
         this.ui.showToast('A blacksmith is required to upgrade knights.');
         return true;
       }
-      this.ui.openKnightUpgrade({
-        getViewState: () => {
-          const p = this.netPlayers?.[this.localPlayer.userId];
-          const blacksmiths = p?.blacksmiths ?? 0;
-          return {
-            healthLevel: p?.healthLevel ?? 0,
-            attackLevel: p?.attackLevel ?? 0,
-            maxLevel: maxKnightUpgradeLevelForBlacksmiths(blacksmiths),
-            blacksmithCount: blacksmiths,
-            resources: this.#netLocalResources(),
-          };
-        },
-        onUpgrade: (kind) => {
-          this.#sendIntent(INTENT.UPGRADE_ARMY, { kind });
-          return { ok: true };
-        },
-      });
+      this.#openKnightUpgradeModal();
       return true;
     }
 
     return false;
+  }
+
+  /** Открыть модалку магазина (обмен ресурсов). */
+  #openMarketShopModal() {
+    this.ui.openMarketShop({
+      getResources: () => this.#netLocalResources(),
+      onExchange: (kind, qty) => {
+        this.#sendIntent(INTENT.SHOP_EXCHANGE, { kind, qty });
+        return { ok: true };
+      },
+    });
+  }
+
+  /** Открыть модалку прокачки замка. */
+  #openCastleUpgradeModal() {
+    this.ui.openCastleUpgrade({
+      getViewState: () => {
+        const p = this.netPlayers?.[this.localPlayer.userId];
+        return {
+          rangeLevel: p?.castleRangeLevel ?? 0,
+          damageLevel: p?.castleDamageLevel ?? 0,
+          speedLevel: p?.castleSpeedLevel ?? 0,
+          resources: this.#netLocalResources(),
+        };
+      },
+      onUpgrade: (kind) => {
+        this.#sendIntent(INTENT.UPGRADE_CASTLE, { kind });
+        return { ok: true };
+      },
+    });
+  }
+
+  /** Открыть модалку прокачки рыцарей (кузница). */
+  #openKnightUpgradeModal() {
+    this.ui.openKnightUpgrade({
+      getViewState: () => {
+        const p = this.netPlayers?.[this.localPlayer.userId];
+        const blacksmiths = p?.blacksmiths ?? 0;
+        return {
+          healthLevel: p?.healthLevel ?? 0,
+          attackLevel: p?.attackLevel ?? 0,
+          maxLevel: maxKnightUpgradeLevelForBlacksmiths(blacksmiths),
+          blacksmithCount: blacksmiths,
+          resources: this.#netLocalResources(),
+        };
+      },
+      onUpgrade: (kind) => {
+        this.#sendIntent(INTENT.UPGRADE_ARMY, { kind });
+        return { ok: true };
+      },
+    });
+  }
+
+  /**
+   * Горячие клавиши:
+   * X/Z/C — магазин/кузница/пушка; 1 — тренировка воинов; 2 — постройка;
+   * R — снять выделение; F — камера к своему замку.
+   */
+  #handleHotkeys() {
+    if (this.controls.consumeJumpToCastleRequest()) {
+      const c = this.localPlayer.castleStart;
+      if (c) {
+        this.controls.centerOn(c.x + TILE_SIZE, c.y + TILE_SIZE);
+      }
+    }
+
+    if (this.controls.consumeOpenShopRequest()) {
+      if (this.ui.isMarketShopOpen()) {
+        this.ui.closeMarketShop();
+      } else if (this.#playerHasCompletedMarket(this.localPlayer.userId)) {
+        this.#openMarketShopModal();
+      } else {
+        this.ui.showToast('You have no market yet.');
+      }
+    }
+
+    if (this.controls.consumeOpenForgeRequest()) {
+      if (this.ui.isKnightUpgradeOpen()) {
+        this.ui.closeKnightUpgrade();
+      } else {
+        const me = this.netPlayers?.[this.localPlayer.userId];
+        if (me && me.blacksmiths >= 1) {
+          this.#openKnightUpgradeModal();
+        } else {
+          this.ui.showToast('You have no blacksmith yet.');
+        }
+      }
+    }
+
+    if (this.controls.consumeOpenCastleRequest()) {
+      if (this.ui.isCastleUpgradeOpen()) {
+        this.ui.closeCastleUpgrade();
+      } else {
+        this.#openCastleUpgradeModal();
+      }
+    }
+
+    if (this.controls.consumeToggleTrainRequest()) {
+      this.ui.toggleTrainKnightMode();
+    }
+
+    if (this.controls.consumeToggleBuildRequest()) {
+      this.ui.toggleBuildMode();
+    }
+
+    if (this.controls.consumeClearSelectionRequest()) {
+      this.#knightSystem.clearSelection();
+    }
   }
 
   #netLocalResources() {
@@ -2047,6 +2126,16 @@ export class Game {
     const constructionOrDone = new Set(['market', 'marketStage1', 'marketStage2']);
     for (const [, cell] of this.stateManager.getState().entries()) {
       if (cell.isRenderable && cell.ownerUserId === userId && constructionOrDone.has(cell.spriteType)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Есть ли у игрока достроенный рынок (для открытия магазина по кнопке «1»). */
+  #playerHasCompletedMarket(userId) {
+    for (const [, cell] of this.stateManager.getState().entries()) {
+      if (cell.isRenderable && cell.ownerUserId === userId && cell.spriteType === 'market') {
         return true;
       }
     }

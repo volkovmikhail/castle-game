@@ -7,6 +7,8 @@ import { attachCanvasResize, syncCanvasSize } from './ui/canvas-resize.js';
 import { UI } from './ui/ui.js';
 import { Network } from './net/network.js';
 import { Lobby } from './ui/lobby.js';
+import { setupHelpModal } from './ui/help-modal.js';
+import { setupSettingsModal } from './ui/settings-modal.js';
 import { PLAYER_PROFILES } from './constants/players.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
@@ -36,6 +38,9 @@ function resolveLocalPlayer(you) {
 }
 
 async function boot() {
+  setupHelpModal();
+  setupSettingsModal();
+
   const [tileMap, knightImage] = await Promise.all([
     loadImage('assets/tilemap.png'),
     loadImage('assets/knight-colored.png'),
