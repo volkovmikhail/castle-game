@@ -46,6 +46,7 @@ import {
   maxKnightUpgradeLevelForBlacksmiths,
 } from '../../client/constants/knight-upgrades.js';
 import { BUILDING_REGEN_HP_PER_SECOND, CASTLE_MAX_HP } from '../../client/constants/structure-hp.js';
+import { CastleCannonSystem } from '../../client/game/castle-cannon-system.js';
 import {
   BASE_STORAGE_CAP_WHEAT_WOOD,
   cloneStartingResources,
@@ -122,6 +123,9 @@ export class WorldSim {
     this.progressJobs = [];
     this.treeRegrowAccumMs = 0;
 
+    /** Пушки замков (общая симуляция с клиентом). */
+    this.cannonSystem = new CastleCannonSystem();
+
     /** Версия карты: ++ при любой мутации клеток (для дельты снапшота). */
     this.stateVersion = 1;
     /** Слоты выбывших с прошлого тика (разрушен замок / выход). */
@@ -194,6 +198,7 @@ export class WorldSim {
     this.#processProgressJobs();
     this.#regenerateBuildingHp(timeStep);
     this.knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
+    this.cannonSystem.update(timeStep, this.stateManager, this.knightSystem);
     this.#enforceStorageCapsAllPlayers();
   }
 
@@ -1097,6 +1102,7 @@ export class WorldSim {
       // объектов (рубка/регенерация), чтобы полоски HP менялись в реальном времени.
       hp: cells ? null : this.#serializeDamagedHp(),
       knights: this.knightSystem.getUnitsSnapshot(),
+      projectiles: this.cannonSystem.serialize(),
       players: this.#serializePlayers(),
     };
   }

@@ -4,6 +4,9 @@
  */
 export const KNIGHT_SPRITE_WIDTH = 9;
 export const KNIGHT_SPRITE_HEIGHT = 8;
+
+/** Основной (тёмно-зелёный) цвет тела рыцаря из атласа — им же красим снаряд пушки. */
+export const KNIGHT_BODY_COLOR = '#405028';
 // Совместимость со старым кодом (где ожидается одно число размера).
 export const KNIGHT_SPRITE_SIZE = KNIGHT_SPRITE_WIDTH;
 

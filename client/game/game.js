@@ -65,6 +65,8 @@ import { createBuildingHp } from './entities/building-hp.js';
 import { CASTLE_MAX_HP } from '../constants/structure-hp.js';
 import { TreesGenerator } from './generators/trees-generator.js';
 import { KnightSystem } from './knights/knight-system.js';
+import { ProjectileSystem } from './projectiles/projectile-system.js';
+import { CastleCannonSystem } from './castle-cannon-system.js';
 import { INTENT } from '../net/protocol.js';
 
 const MAX_BUILD_DISTANCE_CELLS = 2;
@@ -112,6 +114,12 @@ function residentialHouseStageKey(variant, stage) {
 export class Game {
   /** @type {KnightSystem} */
   #knightSystem;
+
+  /** @type {ProjectileSystem} */
+  #projectileSystem = new ProjectileSystem();
+
+  /** Пушки замков (локальный режим; в сети симулирует сервер). */
+  #cannonSystem = new CastleCannonSystem();
 
   /** @type {Map<string, import('../constants/resources.js').PlayerResources>} */
   #playerResources = new Map();
@@ -478,6 +486,8 @@ export class Game {
 
     this.#knightSystem.render(this.renderer.ctx, this.controls.getScrollOffset(), this.knightImage);
 
+    this.#projectileSystem.render(this.renderer.ctx, this.controls.getScrollOffset());
+
     this.renderer.drawTreesAboveKnights({
       state: this.stateManager.getState(),
       scrollOffset: this.controls.getScrollOffset(),
@@ -698,6 +708,8 @@ export class Game {
     }
 
     this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
+    this.#cannonSystem.update(timeStep, this.stateManager, this.#knightSystem);
+    this.#projectileSystem.syncLocal(this.#cannonSystem.serialize());
     this.#enforceStorageCapsAllPlayers();
   }
 
@@ -718,6 +730,7 @@ export class Game {
 
     // Сглаживание рывков рыцарей между снапшотами (10 Гц → 60 fps).
     this.#knightSystem.interpolate(timeStep);
+    this.#projectileSystem.interpolate(timeStep);
 
     if (!this.#localCastleCentered && this.localPlayer.castleStart) {
       const c = this.localPlayer.castleStart;
@@ -762,6 +775,10 @@ export class Game {
 
     if (Array.isArray(snap.knights)) {
       this.#knightSystem.hydrateFromSnapshot(snap.knights, performance.now());
+    }
+
+    if (Array.isArray(snap.projectiles)) {
+      this.#projectileSystem.hydrateFromSnapshot(snap.projectiles);
     }
 
     if (snap.players) {

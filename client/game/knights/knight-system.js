@@ -1602,7 +1602,15 @@ export class KnightSystem {
     if (target.hp > 0) {
       return;
     }
-    const deadId = target.id;
+    this.#handleKnightDeath(target.id);
+  }
+
+  /**
+   * Снять убитого рыцаря и сбросить приказы тех, кто по нему бил.
+   *
+   * @param {number} deadId
+   */
+  #handleKnightDeath(deadId) {
     this.#removeUnit(deadId);
     for (const u of this.#units) {
       if (u.chopTargetKnightId === deadId) {
@@ -1615,6 +1623,69 @@ export class KnightSystem {
         u.faceLeft = false;
       }
     }
+  }
+
+  /**
+   * Ближайший живой вражеский (для `ownerId`) рыцарь в радиусе от мировой точки.
+   * Используется пушкой замка для выбора цели.
+   *
+   * @param {number} px центр области поиска (мировые пиксели)
+   * @param {number} py
+   * @param {number} radiusPx
+   * @param {string} ownerId владелец замка (его враги — цели)
+   * @returns {{ id: number; ownerUserId: string; cx: number; cy: number } | null}
+   */
+  findNearestEnemyKnightNearPoint(px, py, radiusPx, ownerId) {
+    if (radiusPx <= 0) {
+      return null;
+    }
+    const maxDistSq = radiusPx * radiusPx;
+    let best = null;
+    let bestDistSq = maxDistSq + 1;
+    for (const u of this.#units) {
+      if (u.hp <= 0 || !arePlayersEnemies(ownerId, u.ownerUserId)) {
+        continue;
+      }
+      const c = u.center();
+      const distSq = (c.x - px) ** 2 + (c.y - py) ** 2;
+      if (distSq <= maxDistSq && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = { id: u.id, ownerUserId: u.ownerUserId, cx: c.x, cy: c.y };
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Центр живого рыцаря по id (для самонаведения снаряда). null — если убит/исчез.
+   *
+   * @param {number} id
+   * @returns {{ x: number; y: number } | null}
+   */
+  getKnightCenterById(id) {
+    const u = this.#getUnitById(id);
+    return u && u.hp > 0 ? u.center() : null;
+  }
+
+  /**
+   * Внешний урон рыцарю (пушка замка и т.п.). Возвращает true, если рыцарь убит.
+   *
+   * @param {number} id
+   * @param {number} damage
+   * @returns {boolean}
+   */
+  applyExternalDamageToKnight(id, damage) {
+    const target = this.#getUnitById(id);
+    if (!target || target.hp <= 0) {
+      return false;
+    }
+    target.hp -= damage;
+    target.lastDamagedAtMs = performance.now();
+    if (target.hp > 0) {
+      return false;
+    }
+    this.#handleKnightDeath(target.id);
+    return true;
   }
 
   /**
