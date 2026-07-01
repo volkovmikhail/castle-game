@@ -27,5 +27,6 @@ export const INTENT = {
   MOVE_ORDER: 'moveOrder', //         { wx, wy, knightIds }
   SHOP_EXCHANGE: 'shopExchange', //   { kind, qty }
   UPGRADE_ARMY: 'upgradeArmy', //     { kind }
+  UPGRADE_CASTLE: 'upgradeCastle', // { kind: 'range' | 'damage' | 'speed' }
   HARVEST_FARM: 'harvestFarm', //     { tx, ty }
 };

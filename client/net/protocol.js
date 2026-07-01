@@ -26,5 +26,6 @@ export const INTENT = {
   MOVE_ORDER: 'moveOrder',
   SHOP_EXCHANGE: 'shopExchange',
   UPGRADE_ARMY: 'upgradeArmy',
+  UPGRADE_CASTLE: 'upgradeCastle',
   HARVEST_FARM: 'harvestFarm',
 };

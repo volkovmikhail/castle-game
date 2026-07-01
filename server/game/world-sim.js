@@ -45,6 +45,12 @@ import {
   getKnightUpgradeCost,
   maxKnightUpgradeLevelForBlacksmiths,
 } from '../../client/constants/knight-upgrades.js';
+import {
+  castleMaxLevelForKind,
+  castleUpgradeLevel,
+  createEmptyCastleUpgrades,
+  getCastleUpgradeCost,
+} from '../../client/constants/castle-upgrades.js';
 import { BUILDING_REGEN_HP_PER_SECOND, CASTLE_MAX_HP } from '../../client/constants/structure-hp.js';
 import { CastleCannonSystem } from '../../client/game/castle-cannon-system.js';
 import {
@@ -118,6 +124,8 @@ export class WorldSim {
     this.playerResources = new Map();
     /** @type {Map<string, { healthLevel: number; attackLevel: number }>} */
     this.playerKnightUpgrades = new Map();
+    /** @type {Map<string, import('../../client/constants/castle-upgrades.js').CastleUpgrades>} */
+    this.playerCastleUpgrades = new Map();
 
     /** @type {any[]} таймеры стройки/роста (см. game.js #progressJobs). */
     this.progressJobs = [];
@@ -151,6 +159,7 @@ export class WorldSim {
     for (const slot of this.slots) {
       this.playerResources.set(slot.userId, cloneStartingResources());
       this.playerKnightUpgrades.set(slot.userId, { healthLevel: 0, attackLevel: 0 });
+      this.playerCastleUpgrades.set(slot.userId, createEmptyCastleUpgrades());
     }
   }
 
@@ -198,7 +207,9 @@ export class WorldSim {
     this.#processProgressJobs();
     this.#regenerateBuildingHp(timeStep);
     this.knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
-    this.cannonSystem.update(timeStep, this.stateManager, this.knightSystem);
+    this.cannonSystem.update(timeStep, this.stateManager, this.knightSystem, (uid) =>
+      this.#getCastleUpgrades(uid)
+    );
     this.#enforceStorageCapsAllPlayers();
   }
 
@@ -248,6 +259,8 @@ export class WorldSim {
         return this.#shopExchange(playerId, p.kind, p.qty);
       case 'upgradeArmy':
         return this.#upgradeKnightArmy(playerId, p.kind);
+      case 'upgradeCastle':
+        return this.#upgradeCastle(playerId, p.kind);
       case 'harvestFarm':
         return this.#intentHarvestFarm(playerId, p);
       default:
@@ -779,6 +792,29 @@ export class WorldSim {
     return this.playerKnightUpgrades.get(userId) ?? { healthLevel: 0, attackLevel: 0 };
   }
 
+  /**
+   * @param {string} userId
+   * @returns {import('../../client/constants/castle-upgrades.js').CastleUpgrades}
+   */
+  #getCastleUpgrades(userId) {
+    let up = this.playerCastleUpgrades.get(userId);
+    if (!up) {
+      up = createEmptyCastleUpgrades();
+      this.playerCastleUpgrades.set(userId, up);
+    }
+    return up;
+  }
+
+  /** @param {string} userId */
+  #ownsLiveCastle(userId) {
+    for (const [, cell] of this.stateManager.getState()) {
+      if (cell.ownerUserId === userId && cell.spriteType === 'castle') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   #countBlacksmithsForPlayer(userId) {
     let n = 0;
     for (const [, cell] of this.stateManager.getState()) {
@@ -964,6 +1000,43 @@ export class WorldSim {
     return { ok: true };
   }
 
+  /**
+   * @param {string} userId
+   * @param {import('../../client/constants/castle-upgrades.js').CastleUpgradeKind} kind
+   */
+  #upgradeCastle(userId, kind) {
+    if (kind !== 'range' && kind !== 'damage' && kind !== 'speed') {
+      return { ok: false, error: 'Unknown castle upgrade.' };
+    }
+    if (!this.#ownsLiveCastle(userId)) {
+      return { ok: false, error: 'You need a castle to upgrade its cannon.' };
+    }
+    const up = this.#getCastleUpgrades(userId);
+    const current = castleUpgradeLevel(up, kind);
+    const maxLevel = castleMaxLevelForKind(kind);
+    if (current >= maxLevel) {
+      return { ok: false, error: `Max level reached (${maxLevel}).` };
+    }
+    const nextLevel = current + 1;
+    const resources = this.playerResources.get(userId);
+    if (!resources) {
+      return { ok: false, error: 'No resource data.' };
+    }
+    const cost = getCastleUpgradeCost(kind, nextLevel);
+    if (!canAfford(resources, cost)) {
+      return { ok: false, error: formatMissingResources(resources, cost) };
+    }
+    subtractResources(resources, cost);
+    if (kind === 'range') {
+      up.rangeLevel = nextLevel;
+    } else if (kind === 'speed') {
+      up.speedLevel = nextLevel;
+    } else {
+      up.damageLevel = nextLevel;
+    }
+    return { ok: true };
+  }
+
   // ── Валидация размещения (порт game.js, owner-параметризовано) ───────────────
 
   #validatePlacement(ownerUserId, { x, y, tileData }) {
@@ -1145,6 +1218,7 @@ export class WorldSim {
     for (const slot of this.slots) {
       const res = this.playerResources.get(slot.userId) ?? { wheat: 0, wood: 0, gold: 0 };
       const up = this.#getKnightUpgrades(slot.userId);
+      const castle = this.#getCastleUpgrades(slot.userId);
       out[slot.userId] = {
         slot: slot.slot,
         wheat: res.wheat,
@@ -1152,6 +1226,9 @@ export class WorldSim {
         gold: res.gold,
         healthLevel: up.healthLevel,
         attackLevel: up.attackLevel,
+        castleRangeLevel: castle.rangeLevel,
+        castleDamageLevel: castle.damageLevel,
+        castleSpeedLevel: castle.speedLevel,
         knights: this.knightSystem.countKnightsForOwner(slot.userId),
         maxKnights: this.#maxKnightsForPlayer(slot.userId),
         maxStore: this.#maxStoredWheatWoodForPlayer(slot.userId),

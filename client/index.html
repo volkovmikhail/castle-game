@@ -220,6 +220,67 @@
       </div>
     </div>
 
+    <div id="castle-upgrade-modal" class="market-modal" hidden aria-hidden="true">
+      <div class="market-modal__backdrop" data-castle-upgrade-close tabindex="-1"></div>
+      <div
+        class="market-modal__panel market-modal__panel--knight market-modal__panel--castle"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="castle-upgrade-title"
+        tabindex="-1"
+      >
+        <h2 id="castle-upgrade-title" class="market-modal__title">Castle cannon</h2>
+        <p class="market-modal__lead" id="castle-upgrade-lead">
+          Upgrade your castle cannon: range, damage and fire rate.
+        </p>
+
+        <div class="knight-upgrade-stats castle-upgrade-stats">
+        <div class="knight-upgrade-stat">
+          <div class="knight-upgrade-stat__head">
+            <span class="knight-upgrade-stat__name">Range</span>
+            <span class="knight-upgrade-stat__levels" id="castle-upgrade-range-levels">0 / 5</span>
+          </div>
+          <p class="market-modal__preview" id="castle-upgrade-range-stat">Range: 3 tiles</p>
+          <p class="market-modal__preview" id="castle-upgrade-range-cost"></p>
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="castle-upgrade-range-btn">
+            Upgrade range
+          </button>
+        </div>
+
+        <div class="knight-upgrade-stat">
+          <div class="knight-upgrade-stat__head">
+            <span class="knight-upgrade-stat__name">Damage</span>
+            <span class="knight-upgrade-stat__levels" id="castle-upgrade-damage-levels">0 / ∞</span>
+          </div>
+          <p class="market-modal__preview" id="castle-upgrade-damage-stat">Damage: 50</p>
+          <p class="market-modal__preview" id="castle-upgrade-damage-cost"></p>
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="castle-upgrade-damage-btn">
+            Upgrade damage
+          </button>
+        </div>
+
+        <div class="knight-upgrade-stat">
+          <div class="knight-upgrade-stat__head">
+            <span class="knight-upgrade-stat__name">Fire rate</span>
+            <span class="knight-upgrade-stat__levels" id="castle-upgrade-speed-levels">0 / 5</span>
+          </div>
+          <p class="market-modal__preview" id="castle-upgrade-speed-stat">Fire interval: 1000 ms</p>
+          <p class="market-modal__preview" id="castle-upgrade-speed-cost"></p>
+          <button type="button" class="market-modal__btn market-modal__btn--primary" id="castle-upgrade-speed-btn">
+            Upgrade fire rate
+          </button>
+        </div>
+
+        </div>
+
+        <div class="market-modal__actions">
+          <button type="button" class="market-modal__btn" id="castle-upgrade-close" data-castle-upgrade-close>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="lobby" class="lobby" hidden>
       <div class="lobby__panel">
         <h1 class="lobby__title">Castle Game</h1>

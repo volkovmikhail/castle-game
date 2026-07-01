@@ -16,6 +16,12 @@ import {
   getKnightUpgradeCost,
   KNIGHT_UPGRADE_LEVELS_PER_BLACKSMITH,
 } from '../constants/knight-upgrades.js';
+import {
+  castleMaxLevelForKind,
+  describeCastleUpgradeStat,
+  formatCastleUpgradeCostLine,
+  getCastleUpgradeCost,
+} from '../constants/castle-upgrades.js';
 import { BASE_STORAGE_CAP_WHEAT_WOOD } from '../constants/resources.js';
 import { getShopExchangePreviewLine, SHOP_QUANTITY_STEP } from '../constants/shop-exchange.js';
 
@@ -101,6 +107,22 @@ export class UI {
    * } | null}
    */
   #knightUpgradeCallbacks = null;
+
+  /** @type {HTMLElement | null} */
+  #castleUpgradeModalEl = null;
+
+  /**
+   * @type {{
+   *   getViewState: () => {
+   *     rangeLevel: number;
+   *     damageLevel: number;
+   *     speedLevel: number;
+   *     resources: import('../constants/resources.js').PlayerResources;
+   *   };
+   *   onUpgrade: (kind: 'range' | 'damage' | 'speed') => { ok: boolean; message?: string };
+   * } | null}
+   */
+  #castleUpgradeCallbacks = null;
 
   /** @type {((e: KeyboardEvent) => void) | null} */
   #modalEscapeHandler = null;
@@ -235,6 +257,7 @@ export class UI {
     this.#initBuildModal();
     this.#initMarketShopModal();
     this.#initKnightUpgradeModal();
+    this.#initCastleUpgradeModal();
     this.#initModalEscapeHandler();
   }
 
@@ -410,6 +433,8 @@ export class UI {
     if (!this.#marketModalEl) {
       return;
     }
+    this.closeKnightUpgrade();
+    this.closeCastleUpgrade();
     this.#marketShopCallbacks = callbacks;
     this.#marketModalEl.hidden = false;
     this.#marketModalEl.setAttribute('aria-hidden', 'false');
@@ -497,6 +522,9 @@ export class UI {
     if (this.#knightUpgradeModalEl && !this.#knightUpgradeModalEl.hidden) {
       this.#refreshKnightUpgradeModal();
     }
+    if (this.#castleUpgradeModalEl && !this.#castleUpgradeModalEl.hidden) {
+      this.#refreshCastleUpgradeModal();
+    }
   }
 
   #initKnightUpgradeModal() {
@@ -529,6 +557,11 @@ export class UI {
       if (this.#knightUpgradeModalEl && !this.#knightUpgradeModalEl.hidden) {
         e.preventDefault();
         this.closeKnightUpgrade();
+        return;
+      }
+      if (this.#castleUpgradeModalEl && !this.#castleUpgradeModalEl.hidden) {
+        e.preventDefault();
+        this.closeCastleUpgrade();
         return;
       }
       if (this.#marketModalEl && !this.#marketModalEl.hidden) {
@@ -652,6 +685,7 @@ export class UI {
       return;
     }
     this.closeMarketShop();
+    this.closeCastleUpgrade();
     this.#knightUpgradeCallbacks = callbacks;
     this.#knightUpgradeModalEl.hidden = false;
     this.#knightUpgradeModalEl.setAttribute('aria-hidden', 'false');
@@ -666,6 +700,126 @@ export class UI {
     this.#knightUpgradeModalEl.hidden = true;
     this.#knightUpgradeModalEl.setAttribute('aria-hidden', 'true');
     this.#knightUpgradeCallbacks = null;
+  }
+
+  #initCastleUpgradeModal() {
+    this.#castleUpgradeModalEl = document.getElementById('castle-upgrade-modal');
+    if (!this.#castleUpgradeModalEl) {
+      return;
+    }
+
+    document.getElementById('castle-upgrade-range-btn')?.addEventListener('click', () => {
+      this.#confirmCastleUpgrade('range');
+    });
+    document.getElementById('castle-upgrade-damage-btn')?.addEventListener('click', () => {
+      this.#confirmCastleUpgrade('damage');
+    });
+    document.getElementById('castle-upgrade-speed-btn')?.addEventListener('click', () => {
+      this.#confirmCastleUpgrade('speed');
+    });
+
+    const close = () => this.closeCastleUpgrade();
+    for (const el of this.#castleUpgradeModalEl.querySelectorAll('[data-castle-upgrade-close]')) {
+      el.addEventListener('click', close);
+    }
+  }
+
+  /**
+   * @param {'range' | 'damage' | 'speed'} kind
+   */
+  #confirmCastleUpgrade(kind) {
+    if (!this.#castleUpgradeCallbacks) {
+      return;
+    }
+    const result = this.#castleUpgradeCallbacks.onUpgrade(kind);
+    if (!result.ok && result.message) {
+      this.showToast(result.message);
+    }
+    this.#refreshCastleUpgradeModal();
+  }
+
+  #refreshCastleUpgradeModal() {
+    if (!this.#castleUpgradeModalEl || !this.#castleUpgradeCallbacks) {
+      return;
+    }
+    const { rangeLevel, damageLevel, speedLevel, resources } =
+      this.#castleUpgradeCallbacks.getViewState();
+
+    /** @type {[('range'|'damage'|'speed'), number][]} */
+    const rows = [
+      ['range', rangeLevel],
+      ['damage', damageLevel],
+      ['speed', speedLevel],
+    ];
+
+    for (const [kind, level] of rows) {
+      const maxLevel = castleMaxLevelForKind(kind);
+      const maxLabel = Number.isFinite(maxLevel) ? String(maxLevel) : '∞';
+
+      const levelsEl = document.getElementById(`castle-upgrade-${kind}-levels`);
+      if (levelsEl) {
+        levelsEl.textContent = `${level} / ${maxLabel}`;
+      }
+
+      const statEl = document.getElementById(`castle-upgrade-${kind}-stat`);
+      if (statEl) {
+        statEl.textContent = describeCastleUpgradeStat(kind, level);
+      }
+
+      const costEl = document.getElementById(`castle-upgrade-${kind}-cost`);
+      const btn = document.getElementById(`castle-upgrade-${kind}-btn`);
+
+      if (level >= maxLevel) {
+        if (costEl) {
+          costEl.textContent = 'Max level reached.';
+        }
+        btn?.setAttribute('disabled', '');
+        continue;
+      }
+
+      const next = level + 1;
+      if (costEl) {
+        costEl.textContent = `Next level (${next}): ${formatCastleUpgradeCostLine(kind, next)}`;
+      }
+      if (canAfford(resources, getCastleUpgradeCost(kind, next))) {
+        btn?.removeAttribute('disabled');
+      } else {
+        btn?.setAttribute('disabled', '');
+      }
+    }
+  }
+
+  /**
+   * @param {{
+   *   getViewState: () => {
+   *     rangeLevel: number;
+   *     damageLevel: number;
+   *     speedLevel: number;
+   *     resources: import('../constants/resources.js').PlayerResources;
+   *   };
+   *   onUpgrade: (kind: 'range' | 'damage' | 'speed') => { ok: boolean; message?: string };
+   * }} callbacks
+   */
+  openCastleUpgrade(callbacks) {
+    if (!this.#castleUpgradeModalEl) {
+      return;
+    }
+    this.closeMarketShop();
+    this.closeKnightUpgrade();
+    this.#castleUpgradeCallbacks = callbacks;
+    this.#castleUpgradeModalEl.hidden = false;
+    this.#castleUpgradeModalEl.setAttribute('aria-hidden', 'false');
+    this.#refreshCastleUpgradeModal();
+    document.getElementById('castle-upgrade-range-btn')?.focus();
+  }
+
+  closeCastleUpgrade() {
+    if (!this.#castleUpgradeModalEl) {
+      return;
+    }
+    this.#castleUpgradeModalEl.hidden = true;
+    this.#castleUpgradeModalEl.setAttribute('aria-hidden', 'true');
+    this.#castleUpgradeCallbacks = null;
   }
 
   #refreshBuildingAffordability() {

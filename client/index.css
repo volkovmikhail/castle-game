@@ -652,6 +652,14 @@ body {
   margin-bottom: 4px;
 }
 
+.market-modal__panel--castle {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.castle-upgrade-stats {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 @media (max-width: 560px) {
   .knight-upgrade-stats {
     grid-template-columns: 1fr;

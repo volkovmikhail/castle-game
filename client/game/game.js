@@ -31,6 +31,12 @@ import {
   getKnightUpgradeCost,
   maxKnightUpgradeLevelForBlacksmiths,
 } from '../constants/knight-upgrades.js';
+import {
+  castleMaxLevelForKind,
+  castleUpgradeLevel,
+  createEmptyCastleUpgrades,
+  getCastleUpgradeCost,
+} from '../constants/castle-upgrades.js';
 import { BUILDING_REGEN_HP_PER_SECOND } from '../constants/structure-hp.js';
 import {
   BASE_STORAGE_CAP_WHEAT_WOOD,
@@ -126,6 +132,9 @@ export class Game {
 
   /** @type {Map<string, { healthLevel: number; attackLevel: number }>} */
   #playerKnightUpgrades = new Map();
+
+  /** @type {Map<string, import('../constants/castle-upgrades.js').CastleUpgrades>} */
+  #playerCastleUpgrades = new Map();
 
   /**
    * Таймеры постройки магазина / фермерского дома и роста фермы.
@@ -708,7 +717,9 @@ export class Game {
     }
 
     this.#knightSystem.update(timeStep, this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX);
-    this.#cannonSystem.update(timeStep, this.stateManager, this.#knightSystem);
+    this.#cannonSystem.update(timeStep, this.stateManager, this.#knightSystem, (uid) =>
+      this.#getCastleUpgrades(uid)
+    );
     this.#projectileSystem.syncLocal(this.#cannonSystem.serialize());
     this.#enforceStorageCapsAllPlayers();
   }
@@ -889,11 +900,55 @@ export class Game {
   }
 
   /** Клик по своим рынку/замку/кузнице/ферме в сетевом режиме → модалки/намерения. */
+  /**
+   * По любому тайлу мультитайлового отпечатка (напр. замок 32×32 = 2×2) возвращает
+   * его якорную (renderable) клетку и координаты — чтобы клик засчитывался по всей
+   * постройке, а не только по левому верхнему тайлу. Одиночные тайлы возвращаются
+   * как есть.
+   *
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {{ cell: import('../engine/state/cell.js').Cell; tx: number; ty: number } | null}
+   */
+  #resolveFootprintAnchor(tx, ty) {
+    const state = this.stateManager.getState();
+    const direct = state.get(`${tx}:${ty}`);
+    if (!direct) {
+      return null;
+    }
+    if (direct.isRenderable) {
+      return { cell: direct, tx, ty };
+    }
+    // Неякорная клетка: отпечаток растёт вправо/вниз от якоря, значит якорь выше/левее.
+    // Максимальный размер постройки — 2×2 (замок), поэтому хватает сдвига на 1 тайл.
+    for (let dy = 0; dy <= TILE_SIZE; dy += TILE_SIZE) {
+      for (let dx = 0; dx <= TILE_SIZE; dx += TILE_SIZE) {
+        if (dx === 0 && dy === 0) {
+          continue;
+        }
+        const ax = tx - dx;
+        const ay = ty - dy;
+        const c = state.get(`${ax}:${ay}`);
+        if (
+          c?.isRenderable &&
+          c.spriteType === direct.spriteType &&
+          c.ownerUserId === direct.ownerUserId
+        ) {
+          return { cell: c, tx: ax, ty: ay };
+        }
+      }
+    }
+    return null;
+  }
+
   #tryNetClickStructures(tx, ty) {
-    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
-    if (!cell?.isRenderable) {
+    const anchor = this.#resolveFootprintAnchor(tx, ty);
+    if (!anchor) {
       return false;
     }
+    const { cell, tx: ax, ty: ay } = anchor;
+    tx = ax;
+    ty = ay;
     const st = cell.spriteType;
     const mine = cell.ownerUserId === this.localPlayer.userId;
 
@@ -921,9 +976,32 @@ export class Game {
       return true;
     }
 
-    if (st === 'castle' || st === BLACKSMITH_COMPLETED_SPRITE_TYPE) {
+    if (st === 'castle') {
       if (!mine) {
-        this.ui.showToast(st === 'castle' ? 'This is not your castle.' : 'This is not your blacksmith.');
+        this.ui.showToast('This is not your castle.');
+        return true;
+      }
+      this.ui.openCastleUpgrade({
+        getViewState: () => {
+          const p = this.netPlayers?.[this.localPlayer.userId];
+          return {
+            rangeLevel: p?.castleRangeLevel ?? 0,
+            damageLevel: p?.castleDamageLevel ?? 0,
+            speedLevel: p?.castleSpeedLevel ?? 0,
+            resources: this.#netLocalResources(),
+          };
+        },
+        onUpgrade: (kind) => {
+          this.#sendIntent(INTENT.UPGRADE_CASTLE, { kind });
+          return { ok: true };
+        },
+      });
+      return true;
+    }
+
+    if (st === BLACKSMITH_COMPLETED_SPRITE_TYPE) {
+      if (!mine) {
+        this.ui.showToast('This is not your blacksmith.');
         return true;
       }
       const me = this.netPlayers?.[this.localPlayer.userId];
@@ -964,9 +1042,11 @@ export class Game {
   #resetPlayerResources() {
     this.#playerResources.clear();
     this.#playerKnightUpgrades.clear();
+    this.#playerCastleUpgrades.clear();
     for (const playerProfile of PLAYER_PROFILES) {
       this.#playerResources.set(playerProfile.userId, cloneStartingResources());
       this.#playerKnightUpgrades.set(playerProfile.userId, { healthLevel: 0, attackLevel: 0 });
+      this.#playerCastleUpgrades.set(playerProfile.userId, createEmptyCastleUpgrades());
     }
   }
 
@@ -976,6 +1056,19 @@ export class Game {
    */
   #getKnightUpgrades(userId) {
     return this.#playerKnightUpgrades.get(userId) ?? { healthLevel: 0, attackLevel: 0 };
+  }
+
+  /**
+   * @param {string} userId
+   * @returns {import('../constants/castle-upgrades.js').CastleUpgrades}
+   */
+  #getCastleUpgrades(userId) {
+    let up = this.#playerCastleUpgrades.get(userId);
+    if (!up) {
+      up = createEmptyCastleUpgrades();
+      this.#playerCastleUpgrades.set(userId, up);
+    }
+    return up;
   }
 
   /** @param {string} userId */
@@ -1648,17 +1741,18 @@ export class Game {
   }
 
   /**
-   * Клик по замку или кузнице: прокачка рыцарей.
+   * Клик по замку → прокачка пушки; по кузнице → прокачка рыцарей.
    *
    * @param {number} tx
    * @param {number} ty
    * @returns {boolean}
    */
   #tryOpenKnightUpgrade(tx, ty) {
-    const cell = this.stateManager.getState().get(`${tx}:${ty}`);
-    if (!cell) {
+    const anchor = this.#resolveFootprintAnchor(tx, ty);
+    if (!anchor) {
       return false;
     }
+    const cell = anchor.cell;
 
     if (BLACKSMITH_CONSTRUCTION_SPRITE_TYPES.includes(cell.spriteType)) {
       this.ui.showToast('Blacksmith is still under construction.');
@@ -1676,12 +1770,30 @@ export class Game {
       return true;
     }
 
+    const userId = this.localPlayer.userId;
+
+    if (isCastle) {
+      this.ui.openCastleUpgrade({
+        getViewState: () => {
+          const up = this.#getCastleUpgrades(userId);
+          const resources = this.#playerResources.get(userId);
+          return {
+            rangeLevel: up.rangeLevel,
+            damageLevel: up.damageLevel,
+            speedLevel: up.speedLevel,
+            resources: resources ? { ...resources } : { wheat: 0, wood: 0, gold: 0 },
+          };
+        },
+        onUpgrade: (kind) => this.#upgradeCastle(userId, kind),
+      });
+      return true;
+    }
+
     if (this.#countBlacksmithsForPlayer(this.localPlayer.userId) < 1) {
       this.ui.showToast('A blacksmith is required to upgrade knights.');
       return true;
     }
 
-    const userId = this.localPlayer.userId;
     this.ui.openKnightUpgrade({
       getViewState: () => {
         const up = this.#getKnightUpgrades(userId);
@@ -1741,6 +1853,46 @@ export class Game {
     if (userId === this.localPlayer.userId) {
       this.ui.setResources(resources);
       this.#syncKnightArmyUi();
+    }
+
+    return { ok: true };
+  }
+
+  /**
+   * @param {string} userId
+   * @param {import('../constants/castle-upgrades.js').CastleUpgradeKind} kind
+   * @returns {{ ok: boolean; message?: string }}
+   */
+  #upgradeCastle(userId, kind) {
+    const up = this.#getCastleUpgrades(userId);
+    const current = castleUpgradeLevel(up, kind);
+    const maxLevel = castleMaxLevelForKind(kind);
+    if (current >= maxLevel) {
+      return { ok: false, message: `Max level reached (${maxLevel}).` };
+    }
+
+    const nextLevel = current + 1;
+    const resources = this.#playerResources.get(userId);
+    if (!resources) {
+      return { ok: false, message: 'No resource data.' };
+    }
+
+    const cost = getCastleUpgradeCost(kind, nextLevel);
+    if (!canAfford(resources, cost)) {
+      return { ok: false, message: formatMissingResources(resources, cost) };
+    }
+
+    subtractResources(resources, cost);
+    if (kind === 'range') {
+      up.rangeLevel = nextLevel;
+    } else if (kind === 'speed') {
+      up.speedLevel = nextLevel;
+    } else {
+      up.damageLevel = nextLevel;
+    }
+
+    if (userId === this.localPlayer.userId) {
+      this.ui.setResources(resources);
     }
 
     return { ok: true };
