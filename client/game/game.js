@@ -5,6 +5,7 @@ import {
   HOUSE_TOOL_KEY,
   KNIGHT_TOOL_KEY,
   canAfford,
+  formatMissingResources,
   getNumericCost,
   getPlacementCostEntry,
   subtractResources,
@@ -431,24 +432,31 @@ export class Game {
     });
 
     const buildingKey = this.ui.getSelectedBuilding();
-    const { tx, ty } = this.controls.getSelectedCoords();
-    if (buildingKey) {
-      const tileData =
-        buildingKey === KNIGHT_TOOL_KEY
-          ? KNIGHT_SPAWN_FOOTPRINT
-          : buildingKey === BARN_TOOL_KEY
-            ? tiles.houseBarn
-            : buildingKey === HOUSE_TOOL_KEY
-              ? tiles.house
-              : buildingKey === BLACKSMITH_TOOL_KEY
-                ? tiles.houseBlacksmith
-                : tiles[buildingKey];
+    const selectedCoords = this.controls.getSelectedCoords();
+    const { tx, ty } = selectedCoords;
+    if (buildingKey === KNIGHT_TOOL_KEY) {
+      // Рыцарь не привязан к клетке — призрак следует за курсором пиксельно (как и место спавна).
+      this.renderer.drawPlacementGhost({
+        x: selectedCoords.x,
+        y: selectedCoords.y,
+        knightImage: this.knightImage,
+      });
+    } else if (buildingKey) {
+      const ghostTile =
+        buildingKey === BARN_TOOL_KEY
+          ? tiles.houseBarn
+          : buildingKey === HOUSE_TOOL_KEY
+            ? tiles.house
+            : buildingKey === BLACKSMITH_TOOL_KEY
+              ? tiles.houseBlacksmith
+              : tiles[buildingKey];
 
+      this.renderer.drawPlacementGhost({ tx, ty, tile: ghostTile });
       this.renderer.drawSelector({
         tx,
         ty,
-        width: tileData.width,
-        height: tileData.height,
+        width: ghostTile.width,
+        height: ghostTile.height,
       });
     } else {
       this.renderer.drawSelector({
@@ -676,7 +684,11 @@ export class Game {
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
-                  this.ui.exitBuildMode();
+                  // Режим постройки остаётся активным — можно ставить здания подряд
+                  // (отмена по ESC / Cancel). Уникальные (рынок) — выходим сразу.
+                  if (getPlacementCostEntry(selectedBuilding).uniquePerPlayer) {
+                    this.ui.exitBuildMode();
+                  }
                 }
               }
             }
@@ -841,7 +853,11 @@ export class Game {
         // Режим тренировки остаётся активным — ставим рыцарей подряд (ESC / Cancel / выбор здания).
       } else {
         this.#sendIntent(INTENT.PLACE_BUILDING, { toolKey: selectedBuilding, tx, ty });
-        this.ui.exitBuildMode();
+        // Режим постройки остаётся активным — ставим здания подряд (ESC / Cancel).
+        // Уникальные (рынок) — выходим сразу.
+        if (getPlacementCostEntry(selectedBuilding).uniquePerPlayer) {
+          this.ui.exitBuildMode();
+        }
       }
       return;
     }
@@ -1047,8 +1063,9 @@ export class Game {
     if (!resources) {
       return 'No resource data.';
     }
-    if (!canAfford(resources, getNumericCost(toolKey))) {
-      return 'Not enough resources.';
+    const cost = getNumericCost(toolKey);
+    if (!canAfford(resources, cost)) {
+      return formatMissingResources(resources, cost);
     }
     return null;
   }
@@ -1692,7 +1709,7 @@ export class Game {
 
     const cost = getKnightUpgradeCost(kind, nextLevel);
     if (!canAfford(resources, cost)) {
-      return { ok: false, message: 'Not enough resources.' };
+      return { ok: false, message: formatMissingResources(resources, cost) };
     }
 
     subtractResources(resources, cost);

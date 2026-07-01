@@ -7,6 +7,7 @@ import {
   KNIGHT_TOOL_KEY,
   canAfford,
   formatCostLineForTool,
+  formatMissingResources,
   getNumericCost,
 } from '../constants/economy.js';
 import {
@@ -52,6 +53,7 @@ export class UI {
   #sidebarBuildBtnEl = null;
   #sidebarTrainKnightBtnEl = null;
   #sidebarTrainKnightCostEl = null;
+  #sidebarCancelBtnEl = null;
   /** @type {HTMLElement | null} */
   #buildModalEl = null;
   #resourceWheatEl = null;
@@ -120,24 +122,21 @@ export class UI {
     this.#sidebarBuildBtnEl = document.getElementById('sidebar-build-btn');
     this.#sidebarTrainKnightBtnEl = document.getElementById('sidebar-train-knight-btn');
     this.#sidebarTrainKnightCostEl = document.getElementById('sidebar-train-knight-cost');
+    this.#sidebarCancelBtnEl = document.getElementById('sidebar-cancel-btn');
     if (this.#sidebarTrainKnightCostEl) {
       this.#sidebarTrainKnightCostEl.textContent = formatCostLineForTool(KNIGHT_TOOL_KEY);
     }
 
     this.#sidebarBuildBtnEl?.addEventListener('click', () => {
-      if (this.#selectedBuilding !== null && this.#selectedBuilding !== KNIGHT_TOOL_KEY) {
-        this.#cancelPlacement();
-      } else {
-        this.openBuildModal();
-      }
+      this.openBuildModal();
     });
 
     this.#sidebarTrainKnightBtnEl?.addEventListener('click', () => {
-      if (this.#selectedBuilding === KNIGHT_TOOL_KEY) {
-        this.#cancelPlacement();
-      } else {
-        this.#armBuilding(KNIGHT_TOOL_KEY);
-      }
+      this.#armBuilding(KNIGHT_TOOL_KEY);
+    });
+
+    this.#sidebarCancelBtnEl?.addEventListener('click', () => {
+      this.#cancelPlacement();
     });
 
     const root = document.getElementById('building-selector');
@@ -215,7 +214,10 @@ export class UI {
 
       item.addEventListener('click', () => {
         if (item.classList.contains('building-selector-item--disabled')) {
-          this.showToast('Not enough resources.');
+          const message = this.#lastResources
+            ? formatMissingResources(this.#lastResources, getNumericCost(key))
+            : 'Not enough resources.';
+          this.showToast(message);
           return;
         }
         this.#selectedBuilding = key;
@@ -295,17 +297,20 @@ export class UI {
   }
 
   #updateActionButtonsState() {
+    const active = this.#selectedBuilding !== null;
     const isKnight = this.#selectedBuilding === KNIGHT_TOOL_KEY;
-    const isOtherBuilding = this.#selectedBuilding !== null && !isKnight;
+    const isOtherBuilding = active && !isKnight;
 
-    if (this.#sidebarBuildBtnEl) {
-      this.#sidebarBuildBtnEl.textContent = isOtherBuilding ? 'Cancel' : 'Build';
-      this.#sidebarBuildBtnEl.classList.toggle('sidebar-build-btn--cancel', isOtherBuilding);
-    }
+    // Основные кнопки сохраняют своё действие; подсвечиваем активный режим размещения.
+    this.#sidebarBuildBtnEl?.classList.toggle('sidebar-build-btn--active', isOtherBuilding);
+    this.#sidebarTrainKnightBtnEl?.classList.toggle('sidebar-build-btn--active', isKnight);
 
-    if (this.#sidebarTrainKnightBtnEl) {
-      this.#sidebarTrainKnightBtnEl.textContent = isKnight ? 'Cancel' : 'Train knight';
-      this.#sidebarTrainKnightBtnEl.classList.toggle('sidebar-build-btn--cancel', isKnight);
+    // Единая кнопка отмены — видна, пока активен любой режим (постройка или тренировка).
+    if (this.#sidebarCancelBtnEl) {
+      this.#sidebarCancelBtnEl.hidden = !active;
+      this.#sidebarCancelBtnEl.textContent = isKnight
+        ? 'Cancel training (Esc)'
+        : 'Cancel building (Esc)';
     }
   }
 

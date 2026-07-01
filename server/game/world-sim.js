@@ -18,6 +18,7 @@ import {
   HOUSE_TOOL_KEY,
   KNIGHT_TOOL_KEY,
   canAfford,
+  formatMissingResources,
   getNumericCost,
   getPlacementCostEntry,
   subtractResources,
@@ -836,8 +837,9 @@ export class WorldSim {
     if (!resources) {
       return 'No resource data.';
     }
-    if (!canAfford(resources, getNumericCost(toolKey))) {
-      return 'Not enough resources.';
+    const cost = getNumericCost(toolKey);
+    if (!canAfford(resources, cost)) {
+      return formatMissingResources(resources, cost);
     }
     return null;
   }
@@ -945,7 +947,7 @@ export class WorldSim {
     }
     const cost = getKnightUpgradeCost(kind, nextLevel);
     if (!canAfford(resources, cost)) {
-      return { ok: false, error: 'Not enough resources.' };
+      return { ok: false, error: formatMissingResources(resources, cost) };
     }
     subtractResources(resources, cost);
     if (kind === 'health') {

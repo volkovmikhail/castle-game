@@ -11,6 +11,11 @@ import {
   SHOW_PLAYER_COLOR_TRIANGLE_ABOVE_OWNED_BUILDINGS,
 } from '../constants/player-building-indicator.js';
 import { SELECTOR_LINE_WIDTH, TILE_SIZE } from '../constants/sizes.js';
+import {
+  KNIGHT_FRAME_IDLE,
+  KNIGHT_SPRITE_HEIGHT,
+  KNIGHT_SPRITE_WIDTH,
+} from '../constants/knight-atlas.js';
 import { tiles } from '../constants/tiles.js';
 import {
   WORLD_BORDER_COLOR,
@@ -97,13 +102,64 @@ export class CanvasRenderer {
   }
 
   /**
-   * @param {{ tx: number; ty: number; width?: number; height?: number }} param
+   * @param {{ tx: number; ty: number; width?: number; height?: number; color?: string }} param
    */
-  drawSelector({ tx, ty, width = TILE_SIZE, height = TILE_SIZE }) {
+  drawSelector({ tx, ty, width = TILE_SIZE, height = TILE_SIZE, color = SELECTOR_COLOR }) {
     this.ctx.lineWidth = SELECTOR_LINE_WIDTH;
-    this.ctx.strokeStyle = SELECTOR_COLOR;
+    this.ctx.strokeStyle = color;
 
     this.ctx.strokeRect(tx, ty, width, height);
+  }
+
+  /**
+   * Полупрозрачная проекция под курсором — показывает, куда встанет объект.
+   * Здание привязано к клетке (`tx`/`ty` — левый верхний угол клетки, экранные координаты).
+   * Рыцарь не привязан к клетке и рисуется по центру курсора (`x`/`y` — экранные координаты курсора).
+   *
+   * @param {{
+   *   tx?: number;
+   *   ty?: number;
+   *   x?: number;
+   *   y?: number;
+   *   tile?: { mapX: number; mapY: number; width: number; height: number } | null;
+   *   knightImage?: CanvasImageSource | null;
+   * }} param
+   */
+  drawPlacementGhost({ tx = 0, ty = 0, x = 0, y = 0, tile = null, knightImage = null }) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = 0.6;
+
+    if (knightImage) {
+      const gx = Math.round(x - KNIGHT_SPRITE_WIDTH / 2);
+      const gy = Math.round(y - KNIGHT_SPRITE_HEIGHT / 2);
+      ctx.drawImage(
+        knightImage,
+        KNIGHT_FRAME_IDLE.sx,
+        KNIGHT_FRAME_IDLE.sy,
+        KNIGHT_FRAME_IDLE.sw,
+        KNIGHT_FRAME_IDLE.sh,
+        gx,
+        gy,
+        KNIGHT_SPRITE_WIDTH,
+        KNIGHT_SPRITE_HEIGHT,
+      );
+    } else if (tile) {
+      ctx.drawImage(
+        this.tileMap,
+        tile.mapX,
+        tile.mapY,
+        tile.width,
+        tile.height,
+        tx,
+        ty,
+        tile.width,
+        tile.height,
+      );
+    }
+
+    ctx.restore();
   }
 
   /**

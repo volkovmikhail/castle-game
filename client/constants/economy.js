@@ -114,6 +114,51 @@ export function getNumericCost(toolKey) {
   return normalizeCost(rest);
 }
 
+/** Человекочитаемые названия ресурсов для сообщений. */
+const RESOURCE_LABELS = {
+  wheat: 'wheat',
+  wood: 'wood',
+  gold: 'gold',
+};
+
+/**
+ * Сколько каждого ресурса не хватает до стоимости (только положительная нехватка).
+ *
+ * @param {PlayerResources} resources
+ * @param {Partial<PlayerResources>} cost
+ * @returns {PlayerResources}
+ */
+export function getMissingResources(resources, cost) {
+  const c = normalizeCost(cost);
+  return {
+    wheat: Math.max(0, c.wheat - resources.wheat),
+    wood: Math.max(0, c.wood - resources.wood),
+    gold: Math.max(0, c.gold - resources.gold),
+  };
+}
+
+/**
+ * Сообщение «не хватает …» с перечислением недостающих ресурсов.
+ * Если хватает всего — возвращает общий текст без деталей.
+ *
+ * @param {PlayerResources} resources
+ * @param {Partial<PlayerResources>} cost
+ * @returns {string}
+ */
+export function formatMissingResources(resources, cost) {
+  const missing = getMissingResources(resources, cost);
+  const parts = [];
+  for (const key of /** @type {(keyof PlayerResources)[]} */ (['wheat', 'wood', 'gold'])) {
+    if (missing[key] > 0) {
+      parts.push(`${missing[key]} ${RESOURCE_LABELS[key]}`);
+    }
+  }
+  if (parts.length === 0) {
+    return 'Not enough resources.';
+  }
+  return `Not enough resources: need ${parts.join(', ')} more.`;
+}
+
 /**
  * Краткая строка для подписи в панели построек.
  *

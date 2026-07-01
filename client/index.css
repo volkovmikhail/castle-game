@@ -163,6 +163,23 @@ body {
   text-shadow: 1px 1px 0 var(--c-grass);
 }
 
+/* Активный режим размещения — подсветка основной кнопки. */
+.sidebar-build-btn--active {
+  background: var(--c-grass);
+  color: var(--c-darker);
+  text-shadow: 1px 1px 0 var(--c-cream);
+  box-shadow: var(--bevel-in);
+}
+
+/* Единая кнопка отмены режима постройки/тренировки. */
+.sidebar-cancel-btn {
+  margin-top: 10px;
+}
+
+.sidebar-cancel-btn[hidden] {
+  display: none;
+}
+
 .sidebar-build-cost {
   display: block;
   text-align: center;
