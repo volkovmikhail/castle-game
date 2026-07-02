@@ -92,6 +92,9 @@ const BARN_UNDER_CONSTRUCTION_SPRITES = new Set([
 /** @type {readonly ('house' | 'houseSide' | 'houseDouble')[]} */
 const RESIDENTIAL_HOUSE_VARIANTS = ['house', 'houseSide', 'houseDouble'];
 
+/** @type {readonly ('houseBarn' | 'houseBarnSide')[]} */
+const BARN_VARIANTS = ['houseBarn', 'houseBarnSide'];
+
 const RESIDENTIAL_HOUSE_COMPLETED_SPRITES = new Set(RESIDENTIAL_HOUSE_COMPLETED_TYPES);
 
 const RESIDENTIAL_HOUSE_UNDER_CONSTRUCTION_SPRITES = new Set([
@@ -169,6 +172,16 @@ export class Game {
 
   /** Сетевой режим: камера один раз центрируется на своём замке. */
   #localCastleCentered = false;
+
+  /**
+   * Вариант сарая/дома для следующей установки: показывается в призраке и
+   * ставится на землю; перебрасывается после каждой успешной постройки.
+   * @type {'houseBarn' | 'houseBarnSide' | 'house' | 'houseSide' | 'houseDouble' | null}
+   */
+  #pendingBuildVariant = null;
+
+  /** Инструмент (barn/house), для которого выбран #pendingBuildVariant. */
+  #pendingVariantToolKey = null;
 
   /**
    * Creates an instance of Game.
@@ -459,14 +472,12 @@ export class Game {
         knightImage: this.knightImage,
       });
     } else if (buildingKey) {
-      const ghostTile =
-        buildingKey === BARN_TOOL_KEY
-          ? tiles.houseBarn
-          : buildingKey === HOUSE_TOOL_KEY
-            ? tiles.house
-            : buildingKey === BLACKSMITH_TOOL_KEY
-              ? tiles.houseBlacksmith
-              : tiles[buildingKey];
+      const pendingVariant = this.#getPendingVariantFor(buildingKey);
+      const ghostTile = pendingVariant
+        ? tiles[pendingVariant]
+        : buildingKey === BLACKSMITH_TOOL_KEY
+          ? tiles.houseBlacksmith
+          : tiles[buildingKey];
 
       this.renderer.drawPlacementGhost({ tx, ty, tile: ghostTile });
       this.renderer.drawSelector({
@@ -658,11 +669,14 @@ export class Game {
             } else if (selectedBuilding === 'houseFarm') {
               placementTileKey = 'houseFarmStage1';
             } else if (selectedBuilding === BARN_TOOL_KEY) {
-              barnVariant = Random.getRandomFromRange(0, 1) === 0 ? 'houseBarn' : 'houseBarnSide';
+              barnVariant = /** @type {'houseBarn' | 'houseBarnSide'} */ (
+                this.#getPendingVariantFor(BARN_TOOL_KEY)
+              );
               placementTileKey = barnVariant === 'houseBarn' ? 'houseBarnStage1' : 'houseBarnSideStage1';
             } else if (selectedBuilding === HOUSE_TOOL_KEY) {
-              residentialVariant =
-                RESIDENTIAL_HOUSE_VARIANTS[Random.getRandomFromRange(0, RESIDENTIAL_HOUSE_VARIANTS.length - 1)];
+              residentialVariant = /** @type {'house' | 'houseSide' | 'houseDouble'} */ (
+                this.#getPendingVariantFor(HOUSE_TOOL_KEY)
+              );
               placementTileKey = residentialHouseStageKey(residentialVariant, 1);
             } else if (selectedBuilding === BLACKSMITH_TOOL_KEY) {
               placementTileKey = 'houseBlacksmithStage1';
@@ -708,6 +722,7 @@ export class Game {
                   } else if (selectedBuilding === 'farmStage1') {
                     this.#registerFarmGrowth(tx, ty);
                   }
+                  this.#rerollPendingVariant();
                   // Режим постройки остаётся активным — можно ставить здания подряд
                   // (отмена по ESC / Cancel). Уникальные (рынок) — выходим сразу.
                   if (getPlacementCostEntry(selectedBuilding).uniquePerPlayer) {
@@ -755,6 +770,7 @@ export class Game {
     }
 
     this.#handleNetworkedInput();
+    this.#updateDemolishCursor();
   }
 
   /** Восстановить карту/юнитов/ресурсы из снапшота сервера (клиент-зеркало). */
@@ -814,12 +830,46 @@ export class Game {
   }
 
   /** Отправить намерение; при отказе сервера показать тост. */
-  #sendIntent(type, payload) {
+  #sendIntent(type, payload, onOk) {
     this.network?.sendIntent(type, payload).then((r) => {
       if (r && r.ok === false && r.error) {
         this.ui.showToast(r.error);
+      } else if (r && r.ok === true && onOk) {
+        onOk();
       }
     });
+  }
+
+  /**
+   * Вариант сарая/дома для следующей установки (призрак и постройка совпадают).
+   * Для остальных инструментов — null. При смене инструмента бросается заново.
+   *
+   * @param {string} toolKey
+   */
+  #getPendingVariantFor(toolKey) {
+    if (toolKey !== BARN_TOOL_KEY && toolKey !== HOUSE_TOOL_KEY) {
+      return null;
+    }
+    if (this.#pendingVariantToolKey !== toolKey || !this.#pendingBuildVariant) {
+      this.#pendingVariantToolKey = toolKey;
+      this.#pendingBuildVariant = Game.#rollBuildVariant(toolKey);
+    }
+    return this.#pendingBuildVariant;
+  }
+
+  /** Новый случайный вариант после успешной постройки (следующий дом — другой облик). */
+  #rerollPendingVariant() {
+    if (this.#pendingVariantToolKey) {
+      this.#pendingBuildVariant = Game.#rollBuildVariant(this.#pendingVariantToolKey);
+    }
+  }
+
+  /**
+   * @param {typeof BARN_TOOL_KEY | typeof HOUSE_TOOL_KEY} toolKey
+   */
+  static #rollBuildVariant(toolKey) {
+    const variants = toolKey === BARN_TOOL_KEY ? BARN_VARIANTS : RESIDENTIAL_HOUSE_VARIANTS;
+    return variants[Random.getRandomFromRange(0, variants.length - 1)];
   }
 
   #handleNetworkedInput() {
@@ -860,6 +910,12 @@ export class Game {
 
     const { tx, ty, shiftKey, worldPx, worldPy } = clickedCords;
 
+    // Зажата R → режим сноса: ЛКМ по своему зданию (кроме замка) сносит его.
+    if (this.controls.isDemolishPressed()) {
+      this.#tryDemolishAt(tx, ty);
+      return;
+    }
+
     // Зажат S → приказ «идти к точке» выделенным рыцарям (без удара; курсор-прицел).
     // Без S левый клик ведёт себя как раньше (камера/выбор/постройка).
     if (this.controls.isMovePressed()) {
@@ -887,7 +943,12 @@ export class Game {
         this.#sendIntent(INTENT.TRAIN_KNIGHT, { worldPx, worldPy });
         // Режим тренировки остаётся активным — ставим рыцарей подряд (ESC / Cancel / выбор здания).
       } else {
-        this.#sendIntent(INTENT.PLACE_BUILDING, { toolKey: selectedBuilding, tx, ty });
+        const payload = { toolKey: selectedBuilding, tx, ty };
+        const variant = this.#getPendingVariantFor(selectedBuilding);
+        if (variant) {
+          payload.variant = variant;
+        }
+        this.#sendIntent(INTENT.PLACE_BUILDING, payload, () => this.#rerollPendingVariant());
         // Режим постройки остаётся активным — ставим здания подряд (ESC / Cancel).
         // Уникальные (рынок) — выходим сразу.
         if (getPlacementCostEntry(selectedBuilding).uniquePerPlayer) {
@@ -1001,6 +1062,49 @@ export class Game {
     }
 
     return false;
+  }
+
+  /** @param {string} spriteType */
+  #isCastleSprite(spriteType) {
+    return typeof spriteType === 'string' && spriteType.startsWith('castle');
+  }
+
+  /** Наведён ли курсор на своё сносимое здание (для курсора-указателя в режиме R). */
+  #hoveringOwnDemolishable() {
+    const hovered = this.controls.getHoveredStateCoords();
+    if (!hovered) {
+      return false;
+    }
+    const anchor = this.#resolveFootprintAnchor(hovered.tx, hovered.ty);
+    if (!anchor) {
+      return false;
+    }
+    const { cell } = anchor;
+    return cell.ownerUserId === this.localPlayer.userId && !this.#isCastleSprite(cell.spriteType);
+  }
+
+  /** Обновить курсор режима сноса (каждый кадр в сетевом режиме). */
+  #updateDemolishCursor() {
+    this.controls.setDemolishHover(
+      this.controls.isDemolishPressed() && this.#hoveringOwnDemolishable()
+    );
+  }
+
+  /** Снести своё здание под кликом (кроме замка); сервер вернёт половину ресурсов. */
+  #tryDemolishAt(tx, ty) {
+    const anchor = this.#resolveFootprintAnchor(tx, ty);
+    if (!anchor) {
+      return;
+    }
+    const { cell, tx: ax, ty: ay } = anchor;
+    if (cell.ownerUserId !== this.localPlayer.userId) {
+      return; // не своё здание — молча игнорируем
+    }
+    if (this.#isCastleSprite(cell.spriteType)) {
+      this.ui.showToast("You can't demolish your castle.");
+      return;
+    }
+    this.#sendIntent(INTENT.DEMOLISH_BUILDING, { tx: ax, ty: ay });
   }
 
   /** Открыть модалку магазина (обмен ресурсов). */

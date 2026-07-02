@@ -8,6 +8,7 @@
 import assert from 'assert';
 import { WorldSim } from '../server/game/world-sim.js';
 import { PLAYER_SLOTS } from '../server/constants/slots.js';
+import { STARTING_PLAYER_RESOURCES } from '../client/constants/resources.js';
 
 const TILE = 16;
 
@@ -54,8 +55,8 @@ function run() {
   assert.ok(castleOwners.has(yellow) && castleOwners.has(blue), 'castle owners are the two slots');
 
   // 2. Стартовые ресурсы и жизни в снапшоте.
-  assert.strictEqual(snap0.players[yellow].wheat, 500, 'start wheat');
-  assert.strictEqual(snap0.players[yellow].gold, 1000, 'start gold');
+  assert.strictEqual(snap0.players[yellow].wheat, STARTING_PLAYER_RESOURCES.wheat, 'start wheat');
+  assert.strictEqual(snap0.players[yellow].gold, STARTING_PLAYER_RESOURCES.gold, 'start gold');
   assert.strictEqual(snap0.players[yellow].knights, 0, 'no knights yet');
   assert.strictEqual(snap0.players[yellow].alive, true, 'alive at start');
 
@@ -70,8 +71,8 @@ function run() {
   assert.ok(trainRes.ok, 'train knight ok');
   let ps = world.collectSnapshot(0).players[yellow];
   assert.strictEqual(ps.knights, 1, 'one knight');
-  assert.strictEqual(ps.wheat, 475, 'knight costs 25 wheat');
-  assert.strictEqual(ps.gold, 975, 'knight costs 25 gold');
+  assert.strictEqual(ps.wheat, STARTING_PLAYER_RESOURCES.wheat - 25, 'knight costs 25 wheat');
+  assert.strictEqual(ps.gold, STARTING_PLAYER_RESOURCES.gold - 25, 'knight costs 25 gold');
 
   // 4. Постройка фермы рядом с замком: списывается wood/gold.
   const farmRes = world.applyIntent(0, {
@@ -80,8 +81,8 @@ function run() {
   });
   assert.ok(farmRes.ok, 'place farm ok');
   ps = world.collectSnapshot(0).players[yellow];
-  assert.strictEqual(ps.wood, 450, 'farm costs 50 wood');
-  assert.strictEqual(ps.gold, 950, 'farm costs 25 gold');
+  assert.strictEqual(ps.wood, STARTING_PLAYER_RESOURCES.wood - 50, 'farm costs 50 wood');
+  assert.strictEqual(ps.gold, STARTING_PLAYER_RESOURCES.gold - 25 - 25, 'farm costs 25 gold');
 
   // 5. Слишком далеко от дома — отказ (чистим тайл в центре, чтобы исключить дерево).
   world.stateManager.deleteCell({ x: 512, y: 512 });
@@ -107,6 +108,23 @@ function run() {
   world.applyIntent(0, { type: 'placeBuilding', payload: { toolKey: 'farmStage1', tx: spots[4].x, ty: spots[4].y } });
   const c = world.collectSnapshot(b.v);
   assert.ok(c.cells !== null, 'after build => cells included');
+
+  // 7.5. Вариант дома из призрака (клиент прислал variant) ставится как есть.
+  // Часть свободных тайлов занята рыцарем из шага 3 — пробуем, пока не встанет.
+  let hSpot = null;
+  for (const spot of emptyTilesNear(world, yellow)) {
+    const houseRes = world.applyIntent(0, {
+      type: 'placeBuilding',
+      payload: { toolKey: 'house', tx: spot.x, ty: spot.y, variant: 'houseDouble' },
+    });
+    if (houseRes.ok) {
+      hSpot = spot;
+      break;
+    }
+  }
+  assert.ok(hSpot, 'house with explicit variant placed on some free spot');
+  const houseCell = world.stateManager.getState().get(`${hSpot.x}:${hSpot.y}`);
+  assert.strictEqual(houseCell?.spriteType, 'houseDoubleStage1', 'requested house variant is placed');
 
   // 8. Чужой слот не может слать намерения как ты — а выбывший вообще ничего.
   world.markSlotDead(1);

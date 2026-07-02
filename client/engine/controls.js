@@ -84,6 +84,8 @@ export class Controls {
   #pendingJumpToCastle = false;
   /** Зажат E — режим приказа перемещения (ЛКМ = идти к точке), курсор-прицел. */
   #isMovePressed = false;
+  /** Зажата R — режим сноса зданий (ЛКМ по своему зданию = снести), курсор-указатель. */
+  #isDemolishPressed = false;
 
   /** @type {{ x: number; y: number } | null} последняя позиция мыши относительно канваса. */
   #lastCanvasX = null;
@@ -114,15 +116,24 @@ export class Controls {
       }
       const inNumberInput = Controls.#isNumberInputTarget(event.target);
 
-      // Q — выделить всех своих рыцарей (раньше было Shift+A).
+      // Shift+Q — выделить всех своих рыцарей; Q без Shift — снять всё выделение.
       if (event.code === 'KeyQ' && !event.repeat) {
-        this.#pendingSelectAllKnights = true;
+        if (event.shiftKey) {
+          this.#pendingSelectAllKnights = true;
+        } else {
+          this.#pendingClearSelection = true;
+        }
         event.preventDefault();
       }
 
       // E — режим приказа перемещения (раньше было S).
       if (event.code === 'KeyE') {
         this.#setMovePressed(true);
+      }
+
+      // R (зажать) — режим сноса зданий: курсором управляет Game (свои здания).
+      if (event.code === 'KeyR') {
+        this.#isDemolishPressed = true;
       }
 
       // WASD — панорама камеры.
@@ -163,12 +174,6 @@ export class Controls {
         event.preventDefault();
       }
 
-      // R — полностью снять выделение с воинов.
-      if (event.code === 'KeyR' && !event.repeat) {
-        this.#pendingClearSelection = true;
-        event.preventDefault();
-      }
-
       // F — мгновенно перевести камеру к своему замку.
       if (event.code === 'KeyF' && !event.repeat) {
         this.#pendingJumpToCastle = true;
@@ -184,12 +189,18 @@ export class Controls {
       if (event.code === 'KeyE') {
         this.#setMovePressed(false);
       }
+      if (event.code === 'KeyR') {
+        this.#isDemolishPressed = false;
+        this.#applyDemolishCursor(false);
+      }
       this.#pressedPanKeys.delete(event.code);
     });
 
     window.addEventListener('blur', () => {
       this.#isSpacePressed = false;
       this.#setMovePressed(false);
+      this.#isDemolishPressed = false;
+      this.#applyDemolishCursor(false);
       this.#pressedPanKeys.clear();
     });
 
@@ -565,6 +576,48 @@ export class Controls {
   /** Зажата ли кнопка E (режим приказа перемещения выделенных рыцарей). */
   isMovePressed() {
     return this.#isMovePressed;
+  }
+
+  /** Зажата ли кнопка R (режим сноса зданий). */
+  isDemolishPressed() {
+    return this.#isDemolishPressed;
+  }
+
+  /**
+   * Game сообщает, наведён ли курсор на своё сносимое здание (каждый кадр).
+   * Курсор-указатель показываем только пока зажата R и не активен режим E.
+   *
+   * @param {boolean} overOwnBuilding
+   */
+  setDemolishHover(overOwnBuilding) {
+    this.#applyDemolishCursor(this.#isDemolishPressed && overOwnBuilding);
+  }
+
+  #applyDemolishCursor(on) {
+    if (this.#isMovePressed) {
+      return; // крестик режима перемещения важнее
+    }
+    const cursor = on ? 'pointer' : '';
+    if (this.canvas.style.cursor !== cursor) {
+      this.canvas.style.cursor = cursor;
+    }
+  }
+
+  /**
+   * Координаты клетки state под курсором (мировые, tile-aligned) — для подсветки
+   * сноса. null, если позиция мыши ещё не известна.
+   *
+   * @returns {{ tx: number, ty: number } | null}
+   */
+  getHoveredStateCoords() {
+    if (this.#lastCanvasX == null || this.#lastCanvasY == null) {
+      return null;
+    }
+    const { tx, ty } = this.#calculateTileSizedCoords({
+      canvasX: this.#lastCanvasX,
+      canvasY: this.#lastCanvasY,
+    });
+    return { tx: tx - this.#scrollOffsetX, ty: ty - this.#scrollOffsetY };
   }
 
   /**

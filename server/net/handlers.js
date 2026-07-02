@@ -6,11 +6,18 @@ import { C2S, S2C } from './protocol.js';
  *
  * @param {import('socket.io').Server} io
  * @param {import('../rooms/room-manager').RoomManager} roomManager
+ * @param {import('../rooms/matchmaker.js').Matchmaker} matchmaker
  */
-export function registerHandlers(io, roomManager) {
+export function registerHandlers(io, roomManager, matchmaker) {
+  /** Разослать всем актуальное число подключённых сокетов. */
+  const broadcastPresence = () => io.emit(S2C.PRESENCE, { online: io.engine.clientsCount });
+
   io.on('connection', (socket) => {
     // eslint-disable-next-line no-console
     console.log(`[socket] connected ${socket.id}`);
+    // Откладываем на тик: клиент навешивает слушатель presence уже после события
+    // connect, а синхронный emit ушёл бы раньше подписки (и он бы не увидел себя).
+    setImmediate(broadcastPresence);
 
     /** Безопасный вызов ack-колбэка (последний аргумент события). */
     const reply = (cb, payload) => {
@@ -36,9 +43,15 @@ export function registerHandlers(io, roomManager) {
       }
     };
 
+    /** Полностью вывести сокет из лобби: и из комнаты, и из очереди матча. */
+    const leaveAll = () => {
+      matchmaker.leave(socket.id);
+      leaveCurrent();
+    };
+
     socket.on(C2S.ROOM_CREATE, (data, cb) => {
       try {
-        leaveCurrent();
+        leaveAll();
         const room = roomManager.createRoom();
         const player = room.addPlayer(socket.id, data?.name);
         if (!player) {
@@ -73,7 +86,7 @@ export function registerHandlers(io, roomManager) {
         if (room.status !== 'lobby') {
           return reply(cb, { ok: false, error: 'Game already started.' });
         }
-        leaveCurrent();
+        leaveAll();
         const player = room.addPlayer(socket.id, data?.name);
         if (!player) {
           return reply(cb, { ok: false, error: 'Room is full.' });
@@ -98,7 +111,25 @@ export function registerHandlers(io, roomManager) {
     });
 
     socket.on(C2S.ROOM_LEAVE, (_data, cb) => {
-      leaveCurrent();
+      leaveAll();
+      reply(cb, { ok: true });
+    });
+
+    // Быстрый матч: нажатие Find Game = игрок готов, лобби не показываем.
+    socket.on(C2S.MATCH_FIND, (data, cb) => {
+      try {
+        leaveCurrent(); // покидаем комнату по коду, если были в ней
+        matchmaker.join(socket.id, data?.name);
+        reply(cb, { ok: true });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[MATCH_FIND]', err);
+        reply(cb, { ok: false, error: 'Server error.' });
+      }
+    });
+
+    socket.on(C2S.MATCH_CANCEL, (_data, cb) => {
+      matchmaker.leave(socket.id);
       reply(cb, { ok: true });
     });
 
@@ -140,7 +171,9 @@ export function registerHandlers(io, roomManager) {
     socket.on('disconnect', (reason) => {
       // eslint-disable-next-line no-console
       console.log(`[socket] disconnected ${socket.id} (${reason})`);
-      leaveCurrent();
+      leaveAll();
+      // clientsCount оседает после этого события — считаем на следующем тике.
+      setImmediate(broadcastPresence);
     });
   });
 }

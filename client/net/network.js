@@ -72,6 +72,18 @@ export class Network {
     return this.request(C2S.LOBBY_START, {});
   }
 
+  // ── Быстрый матч ─────────────────────────────────────────────────────────
+
+  /** Встать в очередь быстрого матча. @param {string} name */
+  findMatch(name) {
+    return this.request(C2S.MATCH_FIND, { name });
+  }
+
+  /** Покинуть очередь быстрого матча. */
+  cancelMatch() {
+    return this.request(C2S.MATCH_CANCEL, {});
+  }
+
   /**
    * Отправить игровое намерение (Phase 2).
    * @param {string} type @param {any} payload
@@ -85,6 +97,16 @@ export class Network {
   /** @param {(state: any) => void} cb */
   onRoomState(cb) {
     this.socket?.on(S2C.ROOM_STATE, cb);
+  }
+
+  /** @param {(state: any) => void} cb состояние очереди быстрого матча. */
+  onMatchState(cb) {
+    this.socket?.on(S2C.MATCH_STATE, cb);
+  }
+
+  /** @param {(data: { online: number }) => void} cb число игроков онлайн. */
+  onPresence(cb) {
+    this.socket?.on(S2C.PRESENCE, cb);
   }
 
   /** @param {(data: any) => void} cb */

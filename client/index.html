@@ -84,14 +84,16 @@
             <ul class="hotkey-list" aria-label="Keyboard shortcuts">
               <li class="hotkey-row"><kbd class="hotkey-key">1</kbd><span class="hotkey-label">Train knights</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">2</kbd><span class="hotkey-label">Build mode</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">R</kbd><span class="hotkey-label">Demolish building (hold)</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">X</kbd><span class="hotkey-label">Shop</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">Z</kbd><span class="hotkey-label">Blacksmith</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">C</kbd><span class="hotkey-label">Cannon</span></li>
-              <li class="hotkey-row"><kbd class="hotkey-key">Q</kbd><span class="hotkey-label">Select all troops</span></li>
-              <li class="hotkey-row"><kbd class="hotkey-key">R</kbd><span class="hotkey-label">Clear selection</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">Shift+Q</kbd><span class="hotkey-label">Select all troops</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">Q</kbd><span class="hotkey-label">Clear selection</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">E</kbd><span class="hotkey-label">Move order (hold)</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">WASD</kbd><span class="hotkey-label">Move camera</span></li>
               <li class="hotkey-row"><kbd class="hotkey-key">F</kbd><span class="hotkey-label">Go to castle</span></li>
+              <li class="hotkey-row"><kbd class="hotkey-key">Space</kbd><span class="hotkey-label">Show who owns what (hold)</span></li>
             </ul>
           </section>
         </div>
@@ -314,9 +316,15 @@
             <input type="text" id="lobby-name" class="lobby__input" maxlength="20" placeholder="Player" />
           </label>
 
-          <button type="button" class="lobby__btn lobby__btn--primary lobby__btn--block" id="lobby-create">
-            Create game
-          </button>
+          <div class="lobby__row lobby__row--actions">
+            <button type="button" class="lobby__btn lobby__btn--primary" id="lobby-create">
+              Create game
+            </button>
+            <button type="button" class="lobby__btn lobby__btn--primary lobby__btn--find" id="lobby-find">
+              <span class="lobby__btn-label">Find game</span>
+              <span class="lobby__online" id="lobby-online">· 0 online</span>
+            </button>
+          </div>
 
           <div class="lobby__sep"><span>or join by code</span></div>
 
@@ -326,6 +334,18 @@
           </div>
 
           <p class="lobby__error" id="lobby-error" aria-live="polite"></p>
+        </div>
+
+        <div class="lobby__view" id="lobby-view-search" hidden>
+          <div class="lobby__search">
+            <span class="lobby__search-label">Searching for players…</span>
+            <span class="lobby__search-count" id="lobby-search-count">1 / 4</span>
+            <span class="lobby__search-timer" id="lobby-search-timer"></span>
+          </div>
+          <p class="lobby__hint" id="lobby-search-hint">Waiting for more players to join…</p>
+          <button type="button" class="lobby__btn lobby__btn--ghost lobby__btn--block" id="lobby-search-cancel">
+            Cancel
+          </button>
         </div>
 
         <div class="lobby__view" id="lobby-view-room" hidden>
@@ -421,12 +441,12 @@
         <div class="rules-modal__body">
           <section class="rules-block">
             <h3 class="rules-block__title">Objective</h3>
-            <p>Online battle for 2–4 players — <strong>last castle standing wins</strong>. Send your knights to destroy enemy castles. If your own castle (600 HP) falls, you are eliminated. Leaving a match in progress counts as a defeat.</p>
+            <p>Online battle for 2–4 players — <strong>last castle standing wins</strong>. Send your knights to destroy enemy castles. If your own castle (3000 HP) falls, you are eliminated. Leaving a match in progress counts as a defeat.</p>
           </section>
 
           <section class="rules-block">
             <h3 class="rules-block__title">Resources</h3>
-            <p>You start with <strong>500 wheat · 500 wood · 1000 gold</strong>. Wheat and wood are capped at 500 (+250 per Barn); gold has no limit.</p>
+            <p>You start with <strong>250 wheat · 250 wood · 250 gold</strong>. Wheat and wood are capped at 250 (+250 per Barn); gold has no limit.</p>
             <ul class="rules-list">
               <li><strong>Wood</strong> — send a knight onto forest to chop it: bushes/saplings 5, trees/spruce 10, big trees 15, logs 50.</li>
               <li><strong>Gold</strong> — send a knight onto rocks to mine 1–2 gold.</li>
@@ -436,7 +456,7 @@
 
           <section class="rules-block">
             <h3 class="rules-block__title">Buildings</h3>
-            <p class="rules-block__note">Cost order: wheat · wood · gold. Each building has its own key mechanic.</p>
+            <p class="rules-block__note">Cost order: wheat · wood · gold. Each building has its own key mechanic. Hold <kbd>R</kbd> and click your own building (not the castle) to demolish it — half its cost is refunded and the tile is freed.</p>
             <ul class="rules-buildings">
               <li class="rules-building">
                 <div class="rules-building__head">
@@ -480,19 +500,13 @@
                 </div>
                 <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Trade resources for gold and back. Only one per player.</p>
               </li>
-              <li class="rules-building">
-                <div class="rules-building__head">
-                  <span class="rules-building__name">Knight (train)</span>
-                  <span class="rules-building__cost">25 wheat · 25 gold</span>
-                </div>
-                <p class="rules-building__special"><span class="rules-tag">Mechanic</span>Your fighting unit — gathers resources and attacks enemies.</p>
-              </li>
             </ul>
           </section>
 
           <section class="rules-block">
             <h3 class="rules-block__title">Knights &amp; combat</h3>
             <ul class="rules-list">
+              <li>Train knights for <strong>25 wheat · 25 gold</strong> each — your fighting unit that gathers resources and attacks enemies.</li>
               <li>Base knight: <strong>40 HP · 15 damage</strong>. Cap is 5 knights + 5 per House.</li>
               <li>Knights <strong>auto-attack</strong> enemy knights within 2 tiles. A move-only order (hold <kbd>E</kbd>) walks them there without attacking.</li>
               <li>Move knights onto trees, rocks or ripe farms to gather; onto enemy buildings to attack them (15 damage per hit; buildings regenerate 10 HP/s).</li>
@@ -530,14 +544,16 @@
             <ul class="rules-keys">
               <li><kbd>1</kbd> Train knights (toggle)</li>
               <li><kbd>2</kbd> Build mode (toggle)</li>
+              <li><kbd>R</kbd> Demolish building — hold</li>
               <li><kbd>X</kbd> Shop</li>
               <li><kbd>Z</kbd> Blacksmith</li>
               <li><kbd>C</kbd> Cannon</li>
-              <li><kbd>Q</kbd> Select all troops</li>
-              <li><kbd>R</kbd> Clear selection</li>
+              <li><kbd>Shift+Q</kbd> Select all troops</li>
+              <li><kbd>Q</kbd> Clear selection</li>
               <li><kbd>E</kbd> Move order (hold)</li>
               <li><kbd>WASD</kbd> Move camera</li>
               <li><kbd>F</kbd> Go to your castle</li>
+              <li><kbd>Space</kbd> Show who owns what — hold</li>
               <li><kbd>Esc</kbd> Cancel / close</li>
             </ul>
           </section>

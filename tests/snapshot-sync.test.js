@@ -11,6 +11,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { io } from 'socket.io-client';
+import { STARTING_PLAYER_RESOURCES } from '../client/constants/resources.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TEST_PORT) || 4111;
@@ -94,7 +95,7 @@ async function run() {
     assert.ok(Array.isArray(first.cells) && first.cells.length > 100, 'snapshot has map cells');
     assert.ok(Array.isArray(first.knights), 'snapshot has knights array');
     assert.ok(first.players[me], 'snapshot has my player data');
-    assert.strictEqual(first.players[me].gold, 1000, 'start gold 1000');
+    assert.strictEqual(first.players[me].gold, STARTING_PLAYER_RESOURCES.gold, 'start gold');
     const myCastle = first.cells.find((c) => c[2] === 'castle' && c[3] === me);
     assert.ok(myCastle, 'my castle is in the map');
 
@@ -104,7 +105,10 @@ async function run() {
       payload: { toolKey: 'market', tx: 96, ty: 80 },
     });
     assert.ok(buildRes.ok, `build market ok (${buildRes.error ?? ''})`);
-    await waitUntil(() => (aSnap.latest.players[me].gold === 950 ? true : null), 'gold spent on market');
+    await waitUntil(
+      () => (aSnap.latest.players[me].gold === STARTING_PLAYER_RESOURCES.gold - 50 ? true : null),
+      'gold spent on market'
+    );
     await waitUntil(() => (cellAt(aSnap.latest, 96, 80)?.[2]?.startsWith('market') ? true : null), 'market on map');
 
     // 3. Найм рыцаря отражается: +1 в players и в массиве knights.

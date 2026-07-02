@@ -89,9 +89,46 @@ const MAX_BUILD_DISTANCE_CELLS = 2;
 const HOUSE_NEIGHBOR_RADIUS_CELLS = 3;
 
 const BARN_CAPACITY_SPRITE_TYPES = new Set(['houseBarn', 'houseBarnSide']);
+const BARN_VARIANTS = ['houseBarn', 'houseBarnSide'];
 const RESIDENTIAL_HOUSE_VARIANTS = ['house', 'houseSide', 'houseDouble'];
 const RESIDENTIAL_HOUSE_COMPLETED_SPRITES = new Set(RESIDENTIAL_HOUSE_COMPLETED_TYPES);
 const KNIGHT_SPAWN_FOOTPRINT = { type: 'knight', width: TILE_SIZE, height: TILE_SIZE };
+
+/**
+ * Ключ инструмента (для стоимости) по спрайту здания — включая стадии стройки и
+ * случайные варианты. Замок и не-здания (деревья/декали) → null (снести нельзя).
+ * Порядок проверок важен: houseFarm/houseBarn/houseBlacksmith перед общим house.
+ *
+ * @param {string} spriteType
+ * @returns {string | null}
+ */
+function demolishToolKeyForSpriteType(spriteType) {
+  if (typeof spriteType !== 'string') {
+    return null;
+  }
+  if (spriteType.startsWith('castle')) {
+    return null;
+  }
+  if (spriteType.startsWith('market')) {
+    return 'market';
+  }
+  if (spriteType.startsWith('houseFarm')) {
+    return 'houseFarm';
+  }
+  if (spriteType.startsWith('houseBarn')) {
+    return BARN_TOOL_KEY;
+  }
+  if (spriteType.startsWith('houseBlacksmith')) {
+    return BLACKSMITH_TOOL_KEY;
+  }
+  if (spriteType.startsWith('house')) {
+    return HOUSE_TOOL_KEY;
+  }
+  if (spriteType.startsWith('farmStage')) {
+    return 'farmStage1';
+  }
+  return null;
+}
 
 /**
  * @param {'house' | 'houseSide' | 'houseDouble'} variant
@@ -263,6 +300,8 @@ export class WorldSim {
         return this.#upgradeCastle(playerId, p.kind);
       case 'harvestFarm':
         return this.#intentHarvestFarm(playerId, p);
+      case 'demolishBuilding':
+        return this.#intentDemolishBuilding(playerId, p);
       default:
         return { ok: false, error: 'Unknown intent.' };
     }
@@ -270,7 +309,7 @@ export class WorldSim {
 
   /**
    * @param {string} playerId
-   * @param {{ toolKey: string, tx: number, ty: number }} p
+   * @param {{ toolKey: string, tx: number, ty: number, variant?: string }} p
    */
   #intentPlaceBuilding(playerId, p) {
     const { toolKey, tx, ty } = p;
@@ -285,11 +324,16 @@ export class WorldSim {
     } else if (toolKey === 'houseFarm') {
       placementTileKey = 'houseFarmStage1';
     } else if (toolKey === BARN_TOOL_KEY) {
-      barnVariant = Random.getRandomFromRange(0, 1) === 0 ? 'houseBarn' : 'houseBarnSide';
+      // Клиент присылает вариант, показанный в призраке; без него (или при
+      // невалидном значении) — случайный на каждую постройку.
+      barnVariant = BARN_VARIANTS.includes(p.variant)
+        ? p.variant
+        : BARN_VARIANTS[Random.getRandomFromRange(0, BARN_VARIANTS.length - 1)];
       placementTileKey = barnVariant === 'houseBarn' ? 'houseBarnStage1' : 'houseBarnSideStage1';
     } else if (toolKey === HOUSE_TOOL_KEY) {
-      residentialVariant =
-        RESIDENTIAL_HOUSE_VARIANTS[Random.getRandomFromRange(0, RESIDENTIAL_HOUSE_VARIANTS.length - 1)];
+      residentialVariant = RESIDENTIAL_HOUSE_VARIANTS.includes(p.variant)
+        ? p.variant
+        : RESIDENTIAL_HOUSE_VARIANTS[Random.getRandomFromRange(0, RESIDENTIAL_HOUSE_VARIANTS.length - 1)];
       placementTileKey = residentialHouseStageKey(residentialVariant, 1);
     } else if (toolKey === BLACKSMITH_TOOL_KEY) {
       placementTileKey = 'houseBlacksmithStage1';
@@ -337,6 +381,86 @@ export class WorldSim {
     }
     this.#bump();
     return { ok: true };
+  }
+
+  /**
+   * Снос своего здания (кроме замка). Возвращает половину стоимости (округление
+   * вниз), а на месте отпечатка оставляет «фундамент» — декали земли, поэтому
+   * клетки снова свободны для постройки/прохода.
+   *
+   * @param {string} playerId
+   * @param {{ tx: number, ty: number }} p
+   */
+  #intentDemolishBuilding(playerId, p) {
+    const anchor = this.#findBuildingAnchor(p?.tx, p?.ty);
+    if (!anchor) {
+      return { ok: false, error: 'Nothing to demolish here.' };
+    }
+    const { ax, ay, cell } = anchor;
+    if (cell.ownerUserId !== playerId) {
+      return { ok: false, error: 'You can only demolish your own buildings.' };
+    }
+    const toolKey = demolishToolKeyForSpriteType(cell.spriteType);
+    if (!toolKey) {
+      return { ok: false, error: "This can't be demolished." };
+    }
+    const tileData = tiles[cell.spriteType];
+    if (!tileData) {
+      return { ok: false, error: 'Unknown building.' };
+    }
+
+    // Возврат половины ресурсов (округление вниз).
+    const cost = getNumericCost(toolKey);
+    const resources = this.playerResources.get(playerId);
+    if (resources) {
+      resources.wheat += Math.floor(cost.wheat / 2);
+      resources.wood += Math.floor(cost.wood / 2);
+      resources.gold += Math.floor(cost.gold / 2);
+    }
+
+    // Отменяем незавершённые джобы стройки/роста на этом отпечатке, иначе стадия
+    // могла бы «воскресить» здание поверх фундамента.
+    this.progressJobs = this.progressJobs.filter((j) => !(j.x === ax && j.y === ay));
+
+    // Убираем здание, оставляя свободные клетки с декалями земли (фундамент).
+    this.#replaceDestroyedBuildingFootprintWithDecals(ax, ay, tileData);
+
+    this.#enforceStorageCapsAllPlayers();
+    this.#bump();
+    return { ok: true };
+  }
+
+  /**
+   * По любому тайлу отпечатка (renderable или нет) возвращает якорь здания.
+   * Отпечаток растёт вправо/вниз от якоря; макс. размер 2×2 — хватает сдвига на 1.
+   *
+   * @param {number} tx
+   * @param {number} ty
+   * @returns {{ ax: number, ay: number, cell: any } | null}
+   */
+  #findBuildingAnchor(tx, ty) {
+    const state = this.stateManager.getState();
+    const direct = state.get(`${tx}:${ty}`);
+    if (!direct) {
+      return null;
+    }
+    if (direct.isRenderable) {
+      return { ax: tx, ay: ty, cell: direct };
+    }
+    for (let dy = 0; dy <= TILE_SIZE; dy += TILE_SIZE) {
+      for (let dx = 0; dx <= TILE_SIZE; dx += TILE_SIZE) {
+        if (dx === 0 && dy === 0) {
+          continue;
+        }
+        const ax = tx - dx;
+        const ay = ty - dy;
+        const c = state.get(`${ax}:${ay}`);
+        if (c?.isRenderable && c.spriteType === direct.spriteType && c.ownerUserId === direct.ownerUserId) {
+          return { ax, ay, cell: c };
+        }
+      }
+    }
+    return null;
   }
 
   /**

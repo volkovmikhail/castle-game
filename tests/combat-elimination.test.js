@@ -17,6 +17,9 @@ function run() {
   assert.deepStrictEqual(world.drainEliminations(), [], 'no eliminations at start');
 
   // Спавним атакующих рыцарей жёлтого вокруг замка синего (рядом со stand-тайлами).
+  // Замок обороняется пушкой (авто-огонь по рыцарям) и регенерирует, а его HP =
+  // CASTLE_MAX_HP (3000), поэтому нужна крупная и прокачанная штурмовая группа,
+  // иначе пушка выбьет атакующих раньше, чем они пробьют замок.
   const around = [
     { x: blueCastle.x - 28, y: blueCastle.y + 4 },
     { x: blueCastle.x - 28, y: blueCastle.y + 20 },
@@ -24,9 +27,13 @@ function run() {
     { x: blueCastle.x + 40, y: blueCastle.y + 20 },
     { x: blueCastle.x + 4, y: blueCastle.y + 44 },
     { x: blueCastle.x + 20, y: blueCastle.y + 44 },
+    { x: blueCastle.x + 4, y: blueCastle.y - 28 },
+    { x: blueCastle.x + 20, y: blueCastle.y - 28 },
+    { x: blueCastle.x - 28, y: blueCastle.y - 12 },
+    { x: blueCastle.x + 40, y: blueCastle.y + 36 },
   ];
   const ids = around.map(
-    (p) => world.knightSystem.spawn({ x: p.x, y: p.y, ownerUserId: yellow, healthLevel: 3, attackLevel: 3 }).id
+    (p) => world.knightSystem.spawn({ x: p.x, y: p.y, ownerUserId: yellow, healthLevel: 8, attackLevel: 10 }).id
   );
   assert.strictEqual(world.knightSystem.countKnightsForOwner(yellow), ids.length, 'attackers spawned');
 

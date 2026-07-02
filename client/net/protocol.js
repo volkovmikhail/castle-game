@@ -7,11 +7,15 @@ export const C2S = {
   ROOM_LEAVE: 'room:leave',
   LOBBY_READY: 'lobby:ready',
   LOBBY_START: 'lobby:start',
+  MATCH_FIND: 'match:find',
+  MATCH_CANCEL: 'match:cancel',
   INTENT: 'intent',
 };
 
 export const S2C = {
   ROOM_STATE: 'room:state',
+  MATCH_STATE: 'match:state',
+  PRESENCE: 'presence',
   GAME_START: 'game:start',
   GAME_SNAPSHOT: 'game:snapshot',
   GAME_EVENT: 'game:event',
@@ -28,4 +32,5 @@ export const INTENT = {
   UPGRADE_ARMY: 'upgradeArmy',
   UPGRADE_CASTLE: 'upgradeCastle',
   HARVEST_FARM: 'harvestFarm',
+  DEMOLISH_BUILDING: 'demolishBuilding',
 };

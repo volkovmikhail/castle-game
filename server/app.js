@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 
 import config from './config.js';
 import { RoomManager } from './rooms/room-manager.js';
+import { Matchmaker } from './rooms/matchmaker.js';
 import { registerHandlers } from './net/handlers.js';
 
 // ── Глобальные предохранители ───────────────────────────────────────────────
@@ -28,7 +29,8 @@ const io = new Server(httpServer, {
 });
 
 const roomManager = new RoomManager(io);
-registerHandlers(io, roomManager);
+const matchmaker = new Matchmaker({ io, roomManager });
+registerHandlers(io, roomManager, matchmaker);
 
 // Лёгкий health-эндпоинт: число живых сессий и подключений.
 app.get('/health', (_req, res) => {

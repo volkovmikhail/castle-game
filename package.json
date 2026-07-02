@@ -2,7 +2,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/app.js",
-    "test": "node tests/world-sim.test.js && node tests/combat-elimination.test.js && node tests/castle-cannon.test.js && node tests/castle-upgrades.test.js && node tests/move-only.test.js && node tests/client-render-smoke.test.js && node tests/snapshot-sync.test.js && node tests/lobby-flow.test.js"
+    "test": "node tests/world-sim.test.js && node tests/combat-elimination.test.js && node tests/castle-cannon.test.js && node tests/castle-upgrades.test.js && node tests/move-only.test.js && node tests/client-render-smoke.test.js && node tests/snapshot-sync.test.js && node tests/lobby-flow.test.js && node tests/matchmaking.test.js && node tests/demolish.test.js"
   },
   "dependencies": {
     "express": "4.19.2",

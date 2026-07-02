@@ -42,7 +42,7 @@ const PLAYER_SLOTS = [
     teamId: 'red-player',
     title: 'Red player',
     color: '#d84848',
-    castleStart: { x: 31 * TILE_SIZE, y: 56 * TILE_SIZE },
+    castleStart: { x: 6 * TILE_SIZE, y: 56 * TILE_SIZE },
   },
   {
     slot: 3,

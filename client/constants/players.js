@@ -27,7 +27,7 @@ export const PLAYER_PROFILES = [
     teamId: 'red-player',
     title: 'Red player',
     color: PLAYER_COLORS.red,
-    castleStart: { x: 31 * TILE_SIZE, y: 56 * TILE_SIZE },
+    castleStart: { x: 6 * TILE_SIZE, y: 56 * TILE_SIZE },
   },
   {
     userId: 'green-player',
