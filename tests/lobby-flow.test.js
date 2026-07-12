@@ -98,11 +98,12 @@ async function run() {
     assert.strictEqual(created.you.isHost, true, 'creator is host');
     const code = created.code;
 
-    // 2. Вход по коду — следующие свободные слоты.
+    // 2. Вход по коду — слоты в порядке SLOT_ASSIGN_ORDER: второй игрок получает
+    // диагональный угол (слот 3), третий — слот 1.
     const joinedB = await emitAck(b, 'room:join', { code, name: 'Bob' });
-    assert.ok(joinedB.ok && joinedB.you.slot === 1, 'B joins slot 1');
+    assert.ok(joinedB.ok && joinedB.you.slot === 3, 'B joins slot 3 (diagonal from A)');
     const joinedC = await emitAck(c, 'room:join', { code, name: 'Carol' });
-    assert.ok(joinedC.ok && joinedC.you.slot === 2, 'C joins slot 2');
+    assert.ok(joinedC.ok && joinedC.you.slot === 1, 'C joins slot 1');
     assert.strictEqual(joinedC.room.players.length, 3, 'room has 3 players');
 
     // 3. Старт до готовности — отказ.
@@ -125,7 +126,7 @@ async function run() {
     assert.ok(startRes.ok, 'host start ok');
     await waitUntil(() => (aStart.latest && bStart.latest ? true : null), 'game:start for A and B');
     assert.strictEqual(aStart.latest.you.slot, 0, 'A slot 0 in game');
-    assert.strictEqual(bStart.latest.you.slot, 1, 'B slot 1 in game');
+    assert.strictEqual(bStart.latest.you.slot, 3, 'B slot 3 in game');
     assert.strictEqual(aStart.latest.world.width, 1024, 'world is 1024px wide');
 
     // 7. Намерение в бою принимается сервером (рынок в tree-free кайме у замка слота 0).

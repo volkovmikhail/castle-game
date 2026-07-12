@@ -133,6 +133,7 @@ function treeFootprintCellTooCloseToBuildings(ti, tj, buildingTiles) {
  * @param {Map<string, import('../engine/state/cell.js').Cell>} state
  * @param {{ ti: number; tj: number }[]} buildingTiles
  * @param {Set<string>} knightOccupiedTileKeys ключи `${cx}:${cy}` тайлов под рыцарями
+ * @param {import('./generators/castle-tree-margins.js').CastleNoTreeMargin[] | undefined} castleNoTreeMargins
  */
 function canPlaceTreeFootprint(
   state,
@@ -140,6 +141,7 @@ function canPlaceTreeFootprint(
   worldHeightPx,
   buildingTiles,
   knightOccupiedTileKeys,
+  castleNoTreeMargins,
   x,
   y,
   tileData
@@ -155,7 +157,7 @@ function canPlaceTreeFootprint(
     for (let iy = 0; iy < cellsHigh; iy++) {
       const cx = x + ix * TILE_SIZE;
       const cy = y + iy * TILE_SIZE;
-      if (isInsideCastleNoTreeMargin(cx, cy)) {
+      if (isInsideCastleNoTreeMargin(cx, cy, castleNoTreeMargins)) {
         return false;
       }
       const occ = state.get(`${cx}:${cy}`);
@@ -196,9 +198,17 @@ function shuffleInPlace(arr) {
  * @param {number} worldWidthPx
  * @param {number} worldHeightPx
  * @param {Set<string>} knightOccupiedTileKeys тайлы под рыцарями — деревья там не появляются
+ * @param {import('./generators/castle-tree-margins.js').CastleNoTreeMargin[]} [castleNoTreeMargins]
+ *   каймы активных замков; по умолчанию — всех профилей (одиночный режим)
  * @returns {boolean}
  */
-export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx, knightOccupiedTileKeys) {
+export function tryRegrowOneTree(
+  stateManager,
+  worldWidthPx,
+  worldHeightPx,
+  knightOccupiedTileKeys,
+  castleNoTreeMargins
+) {
   const state = stateManager.getState();
   const buildingTiles = collectBuildingTileCoords(state);
 
@@ -254,6 +264,7 @@ export function tryRegrowOneTree(stateManager, worldWidthPx, worldHeightPx, knig
           worldHeightPx,
           buildingTiles,
           knightOccupiedTileKeys,
+          castleNoTreeMargins,
           nx,
           ny,
           tileData

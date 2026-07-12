@@ -38,13 +38,14 @@ export class TreesGenerator {
    *   from: { x: number; y: number };
    *   to: { x: number; y: number };
    *   knightOccupiedTileKeys?: Set<string>;
+   *   castleNoTreeMargins?: import('./castle-tree-margins.js').CastleNoTreeMargin[];
    * }} param generate cube of trees with cords <from> <to>
    */
-  static generateTrees(stateManager, { from, to, knightOccupiedTileKeys }) {
+  static generateTrees(stateManager, { from, to, knightOccupiedTileKeys, castleNoTreeMargins }) {
     const blocked = knightOccupiedTileKeys ?? new Set();
     for (let x = from.x; x <= to.x; x += TILE_SIZE) {
       for (let y = from.y; y <= to.y; y += TILE_SIZE) {
-        if (isInsideCastleNoTreeMargin(x, y)) {
+        if (isInsideCastleNoTreeMargin(x, y, castleNoTreeMargins)) {
           continue;
         }
 

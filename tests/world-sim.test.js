@@ -9,6 +9,8 @@ import assert from 'assert';
 import { WorldSim } from '../server/game/world-sim.js';
 import { PLAYER_SLOTS } from '../server/constants/slots.js';
 import { STARTING_PLAYER_RESOURCES } from '../client/constants/resources.js';
+import { computeCastleNoTreeMarginsPx } from '../client/game/generators/castle-tree-margins.js';
+import { isTreeSpriteType } from '../client/common/grid-path.js';
 
 const TILE = 16;
 
@@ -53,6 +55,25 @@ function run() {
   assert.strictEqual(castles.length, 2, 'two castles (renderable anchors)');
   const castleOwners = new Set(castles.map((c) => c[3]));
   assert.ok(castleOwners.has(yellow) && castleOwners.has(blue), 'castle owners are the two slots');
+
+  // 1b. Кайма «без деревьев» есть только у активных замков; углы пустых слотов заросли.
+  const inRect = (c, r) => c[0] >= r.minX && c[0] <= r.maxX && c[1] >= r.minY && c[1] <= r.maxY;
+  const activeMargins = computeCastleNoTreeMarginsPx(slots.map((s) => s.castleStart));
+  for (const r of activeMargins) {
+    assert.ok(
+      !snap0.cells.some((c) => isTreeSpriteType(c[2]) && inRect(c, r)),
+      'no trees around active castles'
+    );
+  }
+  const unusedMargins = computeCastleNoTreeMarginsPx(
+    [PLAYER_SLOTS[2].castleStart, PLAYER_SLOTS[3].castleStart]
+  );
+  for (const r of unusedMargins) {
+    assert.ok(
+      snap0.cells.some((c) => isTreeSpriteType(c[2]) && inRect(c, r)),
+      'empty slot corners stay overgrown with trees'
+    );
+  }
 
   // 2. Стартовые ресурсы и жизни в снапшоте.
   assert.strictEqual(snap0.players[yellow].wheat, STARTING_PLAYER_RESOURCES.wheat, 'start wheat');

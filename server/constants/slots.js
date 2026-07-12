@@ -54,4 +54,11 @@ const PLAYER_SLOTS = [
   },
 ];
 
-export { PLAYER_SLOTS, TILE_SIZE };
+/**
+ * Порядок раздачи слотов входящим игрокам: сначала противоположные по диагонали
+ * углы (0: верх-лево, 3: низ-право), чтобы при 2 игроках замки стояли наискосок,
+ * а не на одной стороне карты.
+ */
+const SLOT_ASSIGN_ORDER = [0, 3, 1, 2];
+
+export { PLAYER_SLOTS, SLOT_ASSIGN_ORDER, TILE_SIZE };

@@ -1,5 +1,5 @@
 import config from '../config.js';
-import { PLAYER_SLOTS } from '../constants/slots.js';
+import { PLAYER_SLOTS, SLOT_ASSIGN_ORDER } from '../constants/slots.js';
 import { S2C } from '../net/protocol.js';
 import { Simulation } from '../game/simulation.js';
 
@@ -75,9 +75,9 @@ class Room {
     return this.connectedCount() === 0;
   }
 
-  /** Следующий свободный слот или -1, если комната заполнена. */
+  /** Следующий свободный слот (в порядке SLOT_ASSIGN_ORDER) или -1, если комната заполнена. */
   #firstFreeSlot() {
-    return this.slotOwners.findIndex((owner) => owner === null);
+    return SLOT_ASSIGN_ORDER.find((slot) => this.slotOwners[slot] === null) ?? -1;
   }
 
   /**

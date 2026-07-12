@@ -81,6 +81,7 @@ import {
   isTreeSpriteType,
 } from '../../client/common/grid-path.js';
 import { createBuildingHp } from '../../client/game/entities/building-hp.js';
+import { computeCastleNoTreeMarginsPx } from '../../client/game/generators/castle-tree-margins.js';
 import { TreesGenerator } from '../../client/game/generators/trees-generator.js';
 import { KnightSystem } from '../../client/game/knights/knight-system.js';
 import { StateManager } from '../../client/engine/state/state-manager.js';
@@ -151,6 +152,12 @@ export class WorldSim {
     /** userId активных игроков. */
     this.playerIds = slots.map((s) => s.userId);
 
+    /**
+     * Каймы «без деревьев» только вокруг замков активных слотов: углы пустых
+     * слотов (лобби не добралось до MAX_PLAYERS) остаются заросшими лесом.
+     */
+    this.castleNoTreeMargins = computeCastleNoTreeMarginsPx(slots.map((s) => s.castleStart));
+
     this.stateManager = new StateManager();
     this.knightSystem = new KnightSystem({
       applyChopHit: (anchorTx, anchorTy, knightOwnerId, damage) =>
@@ -206,6 +213,7 @@ export class WorldSim {
       from: { x: 0, y: 0 },
       to: { x: WORLD_WIDTH_PX - TILE_SIZE, y: WORLD_HEIGHT_PX - TILE_SIZE },
       knightOccupiedTileKeys: new Set(),
+      castleNoTreeMargins: this.castleNoTreeMargins,
     });
     this.#bump();
   }
@@ -234,7 +242,13 @@ export class WorldSim {
       const knightKeys = this.knightSystem.getOccupiedTileKeys();
       tryMatureOneSapling(this.stateManager, knightKeys);
       tryMatureOneTreeToBig(this.stateManager, knightKeys);
-      tryRegrowOneTree(this.stateManager, WORLD_WIDTH_PX, WORLD_HEIGHT_PX, knightKeys);
+      tryRegrowOneTree(
+        this.stateManager,
+        WORLD_WIDTH_PX,
+        WORLD_HEIGHT_PX,
+        knightKeys,
+        this.castleNoTreeMargins
+      );
       regrew = true;
     }
     if (regrew) {
